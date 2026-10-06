@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261006j">
+<link rel="stylesheet" href="style.css?v=20261007a">
 </head>
 <body>
 <a class="skip" href="#main">跳至主要內容</a>
@@ -27,7 +27,6 @@
     <button data-view="meet">討論重點</button>
     <button data-view="myhw">我的硬體</button>
     <button data-view="power">供電方案</button>
-    <button data-view="wiring">接線圖</button>
     <button data-view="risks">困難與展出</button>
     <button data-view="prof">教授問答</button>
     <button data-view="rules">歸還守則</button>
@@ -105,49 +104,38 @@
     <ul class="unk" id="hwUnknown"></ul>
   </section>
 
-  <!-- 供電方案 -->
+  <!-- 供電方案＋接線圖 -->
   <section class="view" id="power">
     <h2 class="sec first">供電方案與接線圖</h2>
-    <p class="muted">目標：手臂與底盤不再插市電，全部改由行動電源供電。耗電與續航為估計值，需實測。</p>
+    <p class="muted">目前採單一方案：行動電源負責底盤、LattePanda 與 5 V 周邊；兩隻手臂改由 12 V 電瓶獨立供電。以下接線為初版配置，實作前仍須逐項確認保護元件、線徑、端子與實測電流。</p>
     <div class="verdict-box" id="pwVerdict"></div>
-    <div class="bar"><div class="seg" id="pwTabs" role="group" aria-label="供電方案"></div></div>
     <div id="pwPlan"></div>
-    <h2 class="sec">供電接線實體示意圖檢查</h2>
-    <p class="muted">以下為 2026-10-01 上傳的供電接線實體示意圖，逐項排查是否可行。勾選狀態只保留在本次開啟期間。</p>
-    <figure class="teamfig"><img id="twImg" alt="機器人供電接線實體示意圖（待檢查版本）" loading="lazy"><figcaption>機器人供電接線實體示意圖（待檢查版本）。製作：劉衍希 使用Perplexity Computer製作　製作時間：2026-10-01 09:47（UTC+8）。點圖可放大。</figcaption></figure>
+
+    <h2 class="sec">行動電源佈線圖</h2>
+    <p class="muted">行動電源不再供應兩隻手臂；C1 專供底盤＋頭部舵機，A1／A2 維持原本 5 V 配置。C2、C3 暫時保留。</p>
+    <div id="powerDiagramOnly"></div>
+
+    <h2 class="sec">手臂電瓶供電配線圖</h2>
+    <p class="muted">12 V 電瓶經 20 A 雙極斷路器後分成左右兩路，各路正極配置 10 A 保險絲，再接至各自的 U2D2 Power Hub Board。</p>
+    <figure class="teamfig batteryfig"><img id="batteryImg" src="arm-battery-wiring.png" alt="12V 電瓶供應兩隻手臂 U2D2 Power Hub Board 配線示意圖" loading="lazy"><figcaption>製作：劉衍希 使用Gemini&amp;ChatGPT製作　製作時間：2026-10-07 04:47（UTC+8）。點圖可放大。</figcaption></figure>
+
+    <h2 class="sec">接線檢查與待確認事項</h2>
+    <p class="muted">保留原網站的檢查功能。以下不是已驗證完成的結論；實際接線前請逐項確認，勾選狀態只保留在本次開啟期間。</p>
     <div class="verdict-box warnbox" id="twVerdict"></div>
     <div id="twChecks"></div>
-    <h3 class="sub">修正後的接法（等同方案一）</h3>
+    <h3 class="sub">目前孔位／供電分配</h3>
     <div class="tbl" id="twFix"></div>
-    <h2 class="sec">一定要注意</h2>
-    <ul class="prot" id="pwNotes"></ul>
+
+    <div class="power-warning-box">
+      <h2 class="sec power-warning-title">⚠ 一定要注意</h2>
+      <ul class="prot power-warning-list" id="pwNotes"></ul>
+    </div>
     <h2 class="sec">耗電與續航估算</h2>
     <div class="tbl" id="pwEnergy"></div>
-    <h2 class="sec">採購清單</h2>
+    <h2 class="sec">採購／準備清單</h2>
     <div class="tbl" id="pwBuy"></div>
   </section>
 
-  <!-- 控制板接線圖 -->
-  <section class="view" id="wiring">
-    <h2 class="sec first">控制板接線圖紀錄</h2>
-    <p class="muted" id="wrMeta"></p>
-    <div class="verdict-box" id="wrVerdict"></div>
-    <div id="wrFigs"></div>
-    <h2 class="sec">各控制板電壓／電流限制與接孔</h2>
-    <div class="tbl tr4" id="wrBoards"></div>
-    <h2 class="sec">兩種供電版本的孔位分配</h2>
-    <div class="tbl" id="wrPorts"></div>
-    <h2 class="sec">獨立供電 vs 只用行動電源</h2>
-    <div class="tbl" id="wrCompare"></div>
-    <h2 class="sec">只用行動電源版的採購清單</h2>
-    <div class="tbl" id="wrBuy"></div>
-    <h2 class="sec">讓線看起來不亂的原則</h2>
-    <ul class="prot" id="wrTidy"></ul>
-    <h2 class="sec">兩隻手臂共用一顆 U2D2 的步驟</h2>
-    <ul class="prot" id="wrShared"></ul>
-    <h2 class="sec">仍需確認</h2>
-    <ul class="unk" id="wrConfirm"></ul>
-  </section>
 
   <!-- 方向清單 -->
   <section class="view" id="ideas">
@@ -328,9 +316,9 @@
   </aside>
 </div>
 
-<script src="data.js?v=20261006j"></script>
-<script src="app.js?v=20261006j"></script>
-<script src="tasks.js?v=20261006j"></script>
+<script src="data.js?v=20261007a"></script>
+<script src="app.js?v=20261007a"></script>
+<script src="tasks.js?v=20261007a"></script>
 <script>
 async function loadSiteInfo() {
   try {

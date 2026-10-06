@@ -123,7 +123,6 @@
   // 供電方案
   const PW = POWER;
   $("#pwVerdict").innerHTML = "<b>結論　</b>" + PW.verdict;
-  $("#pwTabs").innerHTML = PW.plans.map((p, i) => `<button data-p="${p.id}" class="${i === 0 ? "on" : ""}">${p.name.split("：")[0]}</button>`).join("");
   const col = v => v === "12V" ? "var(--c)" : v === "20V" ? "var(--b)" : "var(--accent)";
   function wrap(s, n) { const W = t => [...t].reduce((x, ch) => x + (/[\x00-\x7f]/.test(ch) ? 0.55 : 1), 0); const toks = s.match(/[\x00-\x7f]+|[^\x00-\x7f]/g) || []; const out = []; let cur = ""; for (const t of toks) { if (W(cur + t) > n && cur.trim()) { out.push(cur.trim()); cur = ""; } cur += t; } if (cur.trim()) out.push(cur.trim()); return out; }
   function diagram(plan) {
@@ -169,44 +168,26 @@
   }
   function showPlan(id) {
     const p = PW.plans.find(x => x.id === id);
-    $$("#pwTabs button").forEach(b => b.classList.toggle("on", b.dataset.p === id));
     $("#pwPlan").innerHTML = `<article class="plan"><h3>${p.name}</h3>
       <div class="meta"><span class="t">${p.tag}</span><span>額外花費 ${p.cost}</span></div>
       <p style="margin:0;color:var(--muted)">${p.summary}</p>
-      <div class="diagram">${diagram(p)}</div>
-      <div class="legend"><span><i style="background:var(--c)"></i>12 V 動力</span><span><i style="background:var(--b)"></i>20 V（降壓前）</span><span><i style="background:var(--accent)"></i>5 V 控制</span><span>虛線＝二選一</span></div>
       <div class="pc" style="margin-top:14px"><div class="blk"><h4>優點</h4><ul>${p.pros.map(x => `<li>${x}</li>`).join("")}</ul></div><div class="blk warn"><h4>缺點</h4><ul>${p.cons.map(x => `<li>${x}</li>`).join("")}</ul></div><div class="blk alt"><h4>什麼時候選</h4><p style="font-size:14px">${p.when}</p></div></div></article>`;
   }
-  $$("#pwTabs button").forEach(b => b.onclick = () => showPlan(b.dataset.p));
   showPlan("p1");
+  $("#powerDiagramOnly").innerHTML = `<article class="plan"><div class="diagram">${diagram(PW.plans[0])}</div><div class="legend"><span><i style="background:var(--c)"></i>12 V 動力</span><span><i style="background:var(--accent)"></i>5 V 控制</span><span>虛線＝二選一</span></div></article>`;
+  $("#batteryImg").onclick = () => window.open("arm-battery-wiring.png", "_blank");
   $("#pwNotes").innerHTML = PW.notes.map(x => `<li>${x}</li>`).join("");
   $("#pwEnergy").innerHTML = `<div class="tr h"><span>裝置</span><span>估計平均耗電</span><span>說明</span></div>` + PW.energy.map((r, i) => `<div class="tr ${i === PW.energy.length - 1 ? "total" : ""}"><span>${r[0]}</span><span>${r[1]}</span><span>${r[2]}</span></div>`).join("");
   $("#pwBuy").innerHTML = `<div class="tr h"><span>品項</span><span>數量／方案</span><span>注意</span></div>` + PW.buy.map(r => `<div class="tr"><span>${r[0]}</span><span>${r[1]}</span><span>${r[2]}</span></div>`).join("");
 
   // 組員接線圖
   const TW = TEAMWIRE;
-  $("#twImg").src = TW.img;
-  $("#twImg").onclick = () => window.open(TW.img, "_blank");
   $("#twVerdict").innerHTML = "<b>判斷　</b>" + TW.verdict;
   const lvCls = { "必改": "tc", "必確認": "tb", "注意": "ta", "建議": "" };
   $("#twChecks").innerHTML = TW.checks.map((c, i) => `<label class="rule chk2"><input type="checkbox"><span><span class="tag ${lvCls[c.lv]}">${c.lv}</span> <b>${c.t}</b><br><span class="cd">${c.d}</span></span></label>`).join("");
   $$("#twChecks input").forEach(c => c.onchange = () => c.parentElement.classList.toggle("done", c.checked));
   $("#twFix").innerHTML = `<div class="tr h"><span>孔位</span><span>線材</span><span>接到</span></div>` + TW.fix.map(r => `<div class="tr"><span>${r[0]}</span><span>${r[1]}</span><span>${r[2]}</span></div>`).join("");
 
-  // 控制板接線圖
-  const WR = WIRING;
-  $("#wrMeta").textContent = `製作：${WR.author}　製作時間：${WR.recorded}（UTC+8）。點圖可放大。`;
-  $("#wrVerdict").innerHTML = "<b>結論　</b>" + WR.verdict;
-  $("#wrFigs").innerHTML = WR.figs.map(f => `<figure class="teamfig"><img src="${f.img}" alt="${esc(f.cap)}" loading="lazy" data-full="${f.img}"><figcaption>${f.cap}</figcaption></figure>`).join("");
-  $$("#wrFigs img").forEach(i => i.onclick = () => window.open(i.dataset.full, "_blank"));
-  const rows = (hd, rs) => `<div class="tr h">${hd.map(x => `<span>${x}</span>`).join("")}</div>` + rs.map(r => `<div class="tr">${r.map(x => `<span>${x}</span>`).join("")}</div>`).join("");
-  $("#wrBoards").innerHTML = rows(["板子／元件", "電壓", "電流", "接孔"], WR.boards);
-  $("#wrPorts").innerHTML = rows(["裝置", "圖 1 獨立供電版", "圖 3 只用行動電源版"], WR.ports);
-  $("#wrCompare").innerHTML = rows(["面向", "獨立供電（圖 1）", "只用行動電源（圖 3）"], WR.compare);
-  $("#wrBuy").innerHTML = rows(["品項", "數量", "注意"], WR.pbBuy);
-  $("#wrTidy").innerHTML = WR.tidy.map(x => `<li>${x}</li>`).join("");
-  $("#wrShared").innerHTML = WR.shared.map(x => `<li>${x}</li>`).join("");
-  $("#wrConfirm").innerHTML = WR.confirm.map(x => `<li>${x}</li>`).join("");
 
   // 暫定方向與 1005 討論重點
   const MT = MEET, DR = MT.direction;

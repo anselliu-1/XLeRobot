@@ -384,3 +384,34 @@ body.tk-admin .tk{grid-template-columns:92px 2fr minmax(176px,1.2fr) 124px 52px 
 @media (max-width:900px){body.tk-admin .tk{grid-template-columns:76px 1fr 1fr 36px;min-width:0}}
 body.tk-admin .tk{grid-template-columns:84px 1.8fr minmax(168px,1.1fr) 122px 50px 1fr 1.1fr 186px 30px;gap:5px;min-width:1100px}
 @media (max-width:900px){body.tk-admin .tk{grid-template-columns:76px 1fr 1fr 36px;min-width:0}}
+
+/* 2026-10-07 merged power/wiring page */
+.batteryfig img{max-height:920px;object-fit:contain;background:#fff}
+@media (min-width:900px){.batteryfig{padding:18px}.batteryfig img{width:auto;max-width:100%;margin:0 auto}}
+
+/* 供電頁：重要安全提醒 */
+.power-warning-box{
+  background:var(--c-bg);
+  border:1px solid var(--c);
+  border-radius:var(--r);
+  padding:16px 18px 18px;
+  margin:22px 0 28px;
+}
+.power-warning-title{
+  color:var(--c);
+  margin:0 0 10px;
+}
+.power-warning-list{
+  background:transparent;
+  border:0;
+  border-radius:0;
+  padding:0 0 0 22px;
+  color:var(--ink);
+}
+.power-warning-list li::marker{color:var(--c)}
+
+/* 供電頁：重要安全提醒 */
+.power-warning-box{background:var(--c-bg);border:1px solid var(--c);border-radius:var(--r);padding:16px 18px 18px;margin:22px 0 28px}
+.power-warning-title{color:var(--c);margin:0 0 10px}
+.power-warning-list{background:transparent;border:0;border-radius:0;padding:0 0 0 22px;color:var(--ink)}
+.power-warning-list li::marker{color:var(--c)}
