@@ -1,5 +1,5 @@
 # XLeRobot 分工&時程 共用資料 API（Python 標準函式庫，SQLite）
-import json, os, sqlite3, threading, time, uuid, re
+import json, os, sqlite3, threading, time, uuid, re, mimetypes
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from datetime import datetime, timezone, timedelta
 
@@ -146,6 +146,29 @@ class H(BaseHTTPRequestHandler):
                 if since and since.isdigit() and int(since) == r:
                     return self._send(200, {"rev": r, "unchanged": True})
                 return self._send(200, {"rev": r, "tasks": rows(c, is_admin(self))})
+        # Serve frontend/static files from the project directory.
+        # API routes above keep their existing behavior.
+        root = os.path.dirname(os.path.abspath(__file__))
+        rel = self.path.split("?", 1)[0]
+        if rel in ("", "/"):
+            rel = "/index.html"
+        rel = os.path.normpath(rel.lstrip("/"))
+        target = os.path.abspath(os.path.join(root, rel))
+        if target.startswith(root + os.sep) and os.path.isfile(target):
+            try:
+                with open(target, "rb") as f:
+                    b = f.read()
+                ctype = mimetypes.guess_type(target)[0] or "application/octet-stream"
+                if ctype.startswith("text/") or ctype in ("application/javascript", "application/json"):
+                    ctype += "; charset=utf-8"
+                self.send_response(200)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Content-Length", str(len(b)))
+                self.end_headers()
+                self.wfile.write(b)
+                return
+            except OSError:
+                pass
         self._send(404, {"error": "not found"})
 
     def _deny(self):

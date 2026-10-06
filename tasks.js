@@ -7,7 +7,7 @@
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
   // 共用資料：後端 API（全組同步）
-  const API = "port/8000".startsWith("__") ? "http://localhost:8000" : "port/8000";
+  const API = "";
   let tasks = [], rev = 0, online = null, pending = false;
   // 管理者（只有管理者能勾選完成、改完成日期、匯入、還原）
   let ls = null; try { ls = window["local" + "Storage"]; ls.getItem("x"); } catch (e) { ls = null; }
