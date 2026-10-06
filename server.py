@@ -7,6 +7,11 @@ DB = os.environ.get("TASK_DB", os.path.join(os.path.dirname(os.path.abspath(__fi
 PORT = int(os.environ.get("PORT", "8000"))
 LOCK = threading.Lock()
 TZ = timezone(timedelta(hours=8))
+
+APP_VERSION = os.environ.get("APP_VERSION", "v1.0.0")
+DEPLOY_TIME = datetime.now(TZ)
+DEPLOY_TIME_TEXT = DEPLOY_TIME.strftime("%Y 年 %m 月 %d 日 %H:%M（UTC+8）")
+
 import hashlib, hmac
 ADMIN_HASH = os.environ.get("ADMIN_KEY_HASH", "")
 def is_admin(h):
@@ -137,6 +142,13 @@ class H(BaseHTTPRequestHandler):
     def do_GET(self):
         p = self._path()
         if p == "/api/health": return self._send(200, {"ok": True})
+        
+        if p == "/api/site-info":
+            return self._send(200, {
+                "version": APP_VERSION,
+                "deploy_time": DEPLOY_TIME_TEXT
+            })
+        
         if p == "/api/auth": return self._send(200 if is_admin(self) else 403, {"admin": is_admin(self)})
         if p == "/api/tasks":
             q = self.path.split("?", 1)[1] if "?" in self.path else ""

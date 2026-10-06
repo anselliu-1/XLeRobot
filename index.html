@@ -299,9 +299,25 @@
 
 <footer class="site-foot">
   <div class="wrap-foot">
-    <p>劉衍希 使用Perplexity Computer製作</p>
-    <p><span>製作日期：2026 年 9 月 30 日</span><span>最後更新時間：2026 年 10 月 6 日 17:45（UTC+8）</span></p>
-    <p class="credit"><span>使用的點數：5,100.00 點（此使用點數僅包含此網站製作之成本）</span></p>
+    <div class="footer-left">
+      <p>劉衍希 使用 Perplexity Computer 製作</p>
+      <p>現已改用 GitHub 管理原始碼，並透過 Railway 部署網站</p>
+    </div>
+
+    <div class="footer-right">
+      <p>
+        <span>製作日期：2026 年 9 月 30 日</span>
+        <span>最後更新時間：<span id="deploy-time">讀取中...</span></span>
+      </p>
+
+      <p class="credit">
+        <span>使用的點數：5,100.00 點（截至2026年10月7日）</span>
+      </p>
+
+      <p>
+        <span>版本：<span id="site-version">讀取中...</span>｜GitHub 原始碼管理｜Railway 雲端部署</span>
+      </p>
+    </div>
   </div>
 </footer>
 
@@ -315,6 +331,28 @@
 <script src="data.js?v=20261006j"></script>
 <script src="app.js?v=20261006j"></script>
 <script src="tasks.js?v=20261006j"></script>
+<script>
+async function loadSiteInfo() {
+  try {
+    const res = await fetch("/api/site-info", { cache: "no-store" });
+    if (!res.ok) throw new Error("site-info failed");
+
+    const data = await res.json();
+
+    document.getElementById("deploy-time").textContent =
+      data.deploy_time || "無法取得";
+
+    document.getElementById("site-version").textContent =
+      data.version || "無法取得";
+  } catch (err) {
+    document.getElementById("deploy-time").textContent = "無法取得";
+    document.getElementById("site-version").textContent = "無法取得";
+  }
+}
+
+loadSiteInfo();
+</script>
+
 <script data-pplx-inline-edit>
 (function () {
   if (window === window.top) return;
