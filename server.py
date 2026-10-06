@@ -8,7 +8,7 @@ PORT = int(os.environ.get("PORT", "8000"))
 LOCK = threading.Lock()
 TZ = timezone(timedelta(hours=8))
 
-APP_VERSION = os.environ.get("APP_VERSION", "v1.0.1")
+APP_VERSION = os.environ.get("APP_VERSION", "v1.1.0")
 DEPLOY_TIME = datetime.now(TZ)
 DEPLOY_TIME_TEXT = DEPLOY_TIME.strftime("%Y 年 %m 月 %d 日 %H:%M（UTC+8）")
 
