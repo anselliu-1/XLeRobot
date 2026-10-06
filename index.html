@@ -1,0 +1,662 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>XLeRobot 專題可行性研究</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=20261006j">
+</head>
+<body>
+<a class="skip" href="#main">跳至主要內容</a>
+<header class="top">
+  <div class="brand">
+    <svg viewBox="0 0 32 32" width="30" height="30" fill="none" aria-label="專題可行性研究標誌" role="img">
+      <rect x="3" y="18" width="26" height="8" rx="2" stroke="currentColor" stroke-width="2"/>
+      <circle cx="9" cy="28" r="2" fill="currentColor"/><circle cx="23" cy="28" r="2" fill="currentColor"/>
+      <path d="M10 18V11l-4-4M22 18V11l4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="16" cy="9" r="3" stroke="var(--accent)" stroke-width="2"/>
+    </svg>
+    <div><strong>XLeRobot 可行性研究</strong><small>雙臂移動平台・專題檢視工具</small></div>
+  </div>
+  <nav class="tabs" aria-label="主要分頁">
+    <button data-view="overview" class="on">總覽</button>
+    <button data-view="plan">分工&amp;時程</button>
+    <button data-view="meet">討論重點</button>
+    <button data-view="myhw">我的硬體</button>
+    <button data-view="power">供電方案</button>
+    <button data-view="wiring">接線圖</button>
+    <button data-view="risks">困難與展出</button>
+    <button data-view="prof">教授問答</button>
+    <button data-view="rules">歸還守則</button>
+    <button data-view="ideas">方向清單</button>
+    <button data-view="pkg">專題安裝包</button>
+    <button data-view="src">依據</button>
+  </nav>
+  <button class="theme" id="theme" aria-label="切換明暗模式">
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+  </button>
+</header>
+
+<main id="main">
+  <!-- 總覽 -->
+  <section class="view on" id="overview">
+    <div class="hero">
+      <div>
+        <p class="eyebrow">最現實的判斷</p>
+        <h1>先把手臂當成「會移動的手與眼」，<br>不要當成工業手臂。</h1>
+        <p class="lead">XLeRobot 的長處是低負載、室內、可移動的觀察與輕物操作。在不改動學校設備的前提下，最穩的專題是：受控場景、固定工作站、先半自動再全自動，用數據證明它可靠。</p>
+      </div>
+      <div class="verdict">
+        <div><span>適合</span><b>輕物、巡檢、拍照、清點、紀錄</b></div>
+        <div><span>不適合</span><b>重物、地面撿拾、精密組裝、快速動作</b></div>
+        <div><span>運算</span><b>訓練與影像放筆電／雲端</b></div>
+        <div><span>時程</span><b>1–1.5 學期可完成半自動＋一項全自動</b></div>
+      </div>
+    </div>
+
+    <h2 class="sec">目前暫定研究方向</h2>
+    <article class="plan dircard">
+      <div class="meta"><span class="t">暫定方向</span><span>依 2026-10-05 專題討論</span></div>
+      <h3 id="dirTitle"></h3>
+      <p id="dirLead" style="margin:6px 0 14px;color:var(--muted)"></p>
+      <div class="tbl" id="dirPoints"></div>
+      <h4 class="sub" style="margin-top:18px">建議驗收順序</h4>
+      <ol class="steps" id="dirSteps"></ol>
+      <p class="muted" style="margin:10px 0 0">詳細內容見「討論重點」分頁。</p>
+    </article>
+
+    <h2 class="sec">三種改動程度</h2>
+    <div class="cats" id="catCards"></div>
+
+    <h2 class="sec">其他備選組合方案</h2>
+    <p class="muted">1005 討論前的規劃，保留作為備選或加值功能參考。單一功能容易被問「就這樣？」，把 A 類主線＋B 類加值組合成完整流程最有說服力。</p>
+    <div class="combos" id="combos"></div>
+
+    <h2 class="sec">硬體現實檢查</h2>
+    <div class="specs" id="specs"></div>
+  </section>
+
+  <!-- 討論重點 -->
+  <section class="view" id="meet">
+    <h2 class="sec first">專題討論重點（2026-10-05）</h2>
+    <p class="muted" id="mtSrc"></p>
+    <div class="verdict-box warnbox" id="mtBattery"></div>
+    <div class="hwgrid" id="mtSecs"></div>
+    <h2 class="sec">決議與待辦</h2>
+    <div class="tbl" id="mtTodo"></div>
+  </section>
+
+  <!-- 我的硬體 -->
+  <section class="view" id="myhw">
+    <div class="rulehead"><div><h2 class="sec first">我的硬體規格</h2><p class="muted" id="hwNote"></p></div></div>
+    <div class="hwgrid" id="hwGroups"></div>
+    <h2 class="sec">已知問題</h2>
+    <p class="muted">紅色為優先處理。</p>
+    <div class="hards" id="hwIssues"></div>
+    <h2 class="sec">編號 6 鍵盤控制程式重點</h2>
+    <div class="kbwrap"><div class="keys" id="hwKeys"></div><ul class="prot" id="hwProt"></ul></div>
+    <h2 class="sec">對專題的影響</h2>
+    <div class="hards" id="hwImpact"></div>
+    <h2 class="sec">還需要確認</h2>
+    <p class="muted">這些資訊會影響題目選擇，建議先跟組員或教授確認。</p>
+    <ul class="unk" id="hwUnknown"></ul>
+  </section>
+
+  <!-- 供電方案 -->
+  <section class="view" id="power">
+    <h2 class="sec first">供電方案與接線圖</h2>
+    <p class="muted">目標：手臂與底盤不再插市電，全部改由行動電源供電。耗電與續航為估計值，需實測。</p>
+    <div class="verdict-box" id="pwVerdict"></div>
+    <div class="bar"><div class="seg" id="pwTabs" role="group" aria-label="供電方案"></div></div>
+    <div id="pwPlan"></div>
+    <h2 class="sec">供電接線實體示意圖檢查</h2>
+    <p class="muted">以下為 2026-10-01 上傳的供電接線實體示意圖，逐項排查是否可行。勾選狀態只保留在本次開啟期間。</p>
+    <figure class="teamfig"><img id="twImg" alt="機器人供電接線實體示意圖（待檢查版本）" loading="lazy"><figcaption>機器人供電接線實體示意圖（待檢查版本）。製作：劉衍希 使用Perplexity Computer製作　製作時間：2026-10-01 09:47（UTC+8）。點圖可放大。</figcaption></figure>
+    <div class="verdict-box warnbox" id="twVerdict"></div>
+    <div id="twChecks"></div>
+    <h3 class="sub">修正後的接法（等同方案一）</h3>
+    <div class="tbl" id="twFix"></div>
+    <h2 class="sec">一定要注意</h2>
+    <ul class="prot" id="pwNotes"></ul>
+    <h2 class="sec">耗電與續航估算</h2>
+    <div class="tbl" id="pwEnergy"></div>
+    <h2 class="sec">採購清單</h2>
+    <div class="tbl" id="pwBuy"></div>
+  </section>
+
+  <!-- 控制板接線圖 -->
+  <section class="view" id="wiring">
+    <h2 class="sec first">控制板接線圖紀錄</h2>
+    <p class="muted" id="wrMeta"></p>
+    <div class="verdict-box" id="wrVerdict"></div>
+    <div id="wrFigs"></div>
+    <h2 class="sec">各控制板電壓／電流限制與接孔</h2>
+    <div class="tbl tr4" id="wrBoards"></div>
+    <h2 class="sec">兩種供電版本的孔位分配</h2>
+    <div class="tbl" id="wrPorts"></div>
+    <h2 class="sec">獨立供電 vs 只用行動電源</h2>
+    <div class="tbl" id="wrCompare"></div>
+    <h2 class="sec">只用行動電源版的採購清單</h2>
+    <div class="tbl" id="wrBuy"></div>
+    <h2 class="sec">讓線看起來不亂的原則</h2>
+    <ul class="prot" id="wrTidy"></ul>
+    <h2 class="sec">兩隻手臂共用一顆 U2D2 的步驟</h2>
+    <ul class="prot" id="wrShared"></ul>
+    <h2 class="sec">仍需確認</h2>
+    <ul class="unk" id="wrConfirm"></ul>
+  </section>
+
+  <!-- 方向清單 -->
+  <section class="view" id="ideas">
+    <div class="bar">
+      <div class="seg" role="group" aria-label="分類篩選" id="catFilter">
+        <button data-c="all" class="on">全部</button>
+        <button data-c="A">A 不改動</button>
+        <button data-c="B">B 加裝感測</button>
+        <button data-c="C">C 需改動</button>
+      </div>
+      <label class="sel">排序
+        <select id="sort">
+          <option value="feas">可行性</option>
+          <option value="demo">展示效果</option>
+          <option value="novelty">創新空間</option>
+        </select>
+      </label>
+      <label class="chk"><input type="checkbox" id="onlyPick"> 只看推薦</label>
+    </div>
+    <p class="catdesc" id="catDesc"></p>
+    <div class="grid" id="grid"></div>
+  </section>
+
+  <!-- 困難與展出 -->
+  <section class="view" id="risks">
+    <h2 class="sec first">通用困難點</h2>
+    <p class="muted">不論選哪一題都會遇到。紅色代表若沒處理，專題很可能卡住。</p>
+    <div class="hards" id="hards"></div>
+    <h2 class="sec">展出時的疑慮與對策</h2>
+    <div class="expo" id="expo"></div>
+  </section>
+
+  <!-- 教授問答 -->
+  <section class="view" id="prof">
+    <div class="bar">
+      <div class="seg" id="profFilter" role="group" aria-label="問題類別"></div>
+      <button class="btn ghost" id="revealAll">全部展開</button>
+    </div>
+    <p class="muted">先自己想答案，再點開看回答方向。各題目專屬的問題在「方向清單」的詳細頁中。</p>
+    <div class="qa" id="qa"></div>
+  </section>
+
+  <!-- 歸還守則 -->
+  <section class="view" id="rules">
+    <div class="rulehead">
+      <div>
+        <h2 class="sec first">借用財產保護清單</h2>
+        <p class="muted">適用：手臂編號 6／4（學校）、單板電腦、XLeRobot 車體與行動電源（教授資產）。勾選狀態只保留在本次開啟期間，重新整理後會清空。</p>
+      </div>
+      <div class="prog"><b id="progNum">0/0</b><div class="track"><i id="progBar"></i></div></div>
+    </div>
+    <div id="ruleList"></div>
+  </section>
+
+  <!-- 分工&時程 -->
+  <section class="view" id="plan">
+    <h2 class="sec first">分工 &amp; 時程</h2>
+    <p class="muted">全組共用同一份清單，所有人的畫面約 3 秒內同步。做完工作時請勾選「回報完成」，系統會自動記下日期與時間；並於成果欄填寫量測數據或文件連結。</p>
+    <div class="sync" id="tkSync"><i></i><span>連線中…</span></div>
+
+    <div class="tkstats" id="tkStats"></div>
+
+    <form class="tkform own" id="tkForm" autocomplete="off">
+      <label class="f-task"><span>工作內容</span><input id="fTask" required placeholder="例如：量測單支手臂待機電流"></label>
+      <div class="f-who"><span>負責者（最多 4 人）</span><div class="w4"><input id="fWho" list="whoList" placeholder="負責者 1" aria-label="負責者 1"><input id="fWho2" list="whoList" placeholder="負責者 2" aria-label="負責者 2"><input id="fWho3" list="whoList" placeholder="負責者 3" aria-label="負責者 3"><input id="fWho4" list="whoList" placeholder="負責者 4" aria-label="負責者 4"></div></div>
+      <label><span>截止</span><input id="fDue" type="date"></label>
+      <label><span>優先級</span><select id="fPri"><option>高</option><option selected>中</option><option>低</option></select></label>
+      <label class="f-note"><span>備註（僅組長可編輯）</span><input id="fNote" placeholder="選填"></label>
+      <button class="btn primary" type="submit">新增工作</button>
+    </form>
+    <datalist id="whoList"></datalist>
+
+    <div class="tkbar">
+      <div class="seg" id="tkFilter">
+        <button data-f="all" class="on">全部</button><button data-f="todo">未完成</button><button data-f="done">已完成</button><button data-f="late">已逾期</button>
+      </div>
+      <select id="tkWho" aria-label="依負責者篩選"><option value="">所有負責者</option></select>
+      <select id="tkSort" aria-label="排序"><option value="due">依截止日</option><option value="pri">依優先級</option><option value="who">依負責者</option><option value="add">依新增順序</option></select>
+      <span class="sp"></span>
+      <button class="btn" id="tkExport" type="button">匯出 JSON</button>
+      <button class="btn" id="tkCsv" type="button">匯出 CSV</button>
+      <label class="btn own" for="tkImport">匯入</label><input id="tkImport" type="file" accept=".json,application/json" hidden>
+      <button class="btn own" id="tkReset" type="button">還原預設</button>
+      <button class="btn" id="tkAdmin" type="button">管理者登入</button>
+    </div>
+
+    <div class="tktable" id="tkTable"></div>
+    
+
+    <h2 class="sec">1–1.5 學期路線（參考）</h2>
+    <p class="muted">第 14 週就要有「已經可以交」的成果，之後都是加分。</p>
+    <ol class="timeline" id="timeline"></ol>
+  </section>
+
+  <!-- 專題安裝包 -->
+  <section class="view" id="pkg">
+    <h2 class="sec first">專題安裝包</h2>
+    <p class="muted">換電腦或在單板電腦上重建環境時使用。一鍵安裝 Python、Thonny、Miniforge、conda 環境 lerobot 與 XLeRobot 專題程式，完成後桌面會出現「啟動機器」。原本網站上的 v5 安裝包未經測試，已移除。</p>
+    <article class="plan pkgcard">
+      <div class="pkghead">
+        <div>
+          <h3>專題安裝包 <span class="ver">僅 XLeRobot 版</span></h3>
+          <div class="meta"><span class="t">目前版本</span><span>Windows 10／11</span><span>RAR・約 370 MB</span></div>
+        </div>
+        <a class="dl" href="https://drive.google.com/file/d/1zNVCxP0fCyPh7KCgdTRClWZCyd7XgncY/view?usp=drive_link" target="_blank" rel="noopener">下載安裝包（Google 雲端）</a>
+      </div>
+      <div class="tbl"><div class="tr h"><span>項目</span><span>內容</span><span>備註</span></div>
+        <div class="tr"><span>製作</span><span>劉衍希</span><span></span></div>
+        <div class="tr"><span>版本</span><span>專題安裝包（僅 XLeRobot）</span><span>檔名：專題安裝包(僅Xlerobot).rar</span></div>
+        <div class="tr"><span>時間</span><span>2026-10-05 15:39（UTC+8）</span><span>上傳至雲端資料夾的時間</span></div>
+        <div class="tr"><span>SHA-256</span><span class="mono">130a80856cd0418c1d301972986638ed1b4940f459e6717de7cde390b22e6ea3</span><span>下載後可用來核對檔案是否完整</span></div>
+      </div>
+      <p class="muted" style="margin:12px 0 0">檔案約 370 MB，放在 Google 雲端由連結下載，不放在網站內。解壓 RAR 需要 7-Zip 或 WinRAR。</p>
+    </article>
+    <h2 class="sec">安裝包內容</h2>
+    <div class="tbl"><div class="tr h"><span>位置</span><span>說明</span><span>備註</span></div>
+      <div class="tr"><span class="mono">專題安裝.exe</span><span>一鍵安裝程式（顯示 1/9 到 9/9 進度，約 20–60 分鐘，不需管理員權限）</span><span>無數位簽章，出現警告時按「其他資訊」→「仍要執行」</span></div>
+      <div class="tr"><span class="mono">使用說明.md</span><span>隨身碟擺法、執行步驟、安裝位置</span><span></span></div>
+      <div class="tr"><span class="mono">安裝檔\</span><span>離線安裝檔：Python 3.14.7、Thonny 5.0.0、Miniforge3</span><span>放了就不用上網下載</span></div>
+      <div class="tr"><span class="mono">專題\</span><span>XLeRobot-main、lerobot-main、STServo_Python</span><span>沒放時改從 GitHub／PyPI 下載官方版，不一定和改過的版本相同</span></div>
+      <div class="tr"><span class="mono">原始碼\</span><span>install.ps1、xlerobot_launcher.py、installer.nsi</span><span>要改版本時編輯 install.ps1 後用 NSIS 重新編譯</span></div>
+    </div>
+    <h2 class="sec">會安裝什麼、裝在哪</h2>
+    <div class="tbl"><div class="tr h"><span>項目</span><span>位置</span><span></span></div>
+      <div class="tr"><span>Python 3.14.7（加入 PATH）</span><span class="mono">%LOCALAPPDATA%\Programs\Python\Python314</span><span></span></div>
+      <div class="tr"><span>Thonny 5.0.0</span><span class="mono">%LOCALAPPDATA%\Programs\Thonny</span><span>預設使用 Python 3.14.7</span></div>
+      <div class="tr"><span>Miniforge＋Miniforge Prompt</span><span class="mono">%USERPROFILE%\miniforge3</span><span>使用者名稱含中文或空白時改用 C:\miniforge3</span></div>
+      <div class="tr"><span>conda 環境 lerobot</span><span class="mono">miniforge3\envs\lerobot</span><span>Python 3.12、ffmpeg、lerobot[feetech]、pyserial、pynput、pygame、pyinstaller</span></div>
+      <div class="tr"><span>專題程式</span><span class="mono">D:\專題（沒有 D 槽則 C:\專題）</span><span>安裝紀錄：專題\安裝紀錄.txt</span></div>
+      <div class="tr"><span>啟動機器.exe、config.json、啟動機器_備用.bat</span><span class="mono">專題\XLeRobotLauncher\</span><span>桌面會建立捷徑</span></div>
+    </div>
+    <h2 class="sec">使用步驟</h2>
+    <ul class="prot">
+      <li>解壓縮到隨身碟或電腦；建議把舊電腦的 <code>D:\專題</code> 整包複製到 <code>專題\</code>。</li>
+      <li>雙擊 <code>專題安裝.exe</code>，按確定後保持網路連線，看黑色視窗的 1/9–9/9 進度，不要關閉。</li>
+      <li>中途失敗時修好問題（通常是網路）再執行一次，已完成的步驟會自動跳過。</li>
+      <li>完成後雙擊桌面「啟動機器」，等於在 Miniforge Prompt 執行 <code>conda activate lerobot</code> → <code>set PYTHONPATH=src</code> → <code>cd software</code> → <code>python examples/4_xlerobot_teleop_keyboard.py</code>；啟動器也可選擇 Xbox、Joy-Con 等範例。</li>
+      <li>舵機板驅動（CH340／CH343）：Win11 通常自動安裝；裝置管理員看不到 COM 埠時，再到 Waveshare／WCH 官網下載。</li>
+    </ul>
+  </section>
+
+  <!-- 依據 -->
+  <section class="view" id="src">
+    <h2 class="sec first">資料依據</h2>
+    <p class="muted">可行性分數、難度與成本為依你目前條件（機械系、程式基礎、LattePanda 單板電腦、1–1.5 學期）所做的工程判斷；感測器價格為約略市價，依通路浮動。</p>
+    <div class="srcs" id="srcs"></div>
+  </section>
+</main>
+
+<footer class="site-foot">
+  <div class="wrap-foot">
+    <p>劉衍希 使用Perplexity Computer製作</p>
+    <p><span>製作日期：2026 年 9 月 30 日</span><span>最後更新時間：2026 年 10 月 6 日 17:45（UTC+8）</span></p>
+    <p class="credit"><span>使用的點數：5,100.00 點（此使用點數僅包含此網站製作之成本）</span></p>
+  </div>
+</footer>
+
+<div class="drawer-bg" id="drawerBg" aria-hidden="true">
+  <aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="dTitle">
+    <button class="x" id="dClose" aria-label="關閉">×</button>
+    <div id="dBody"></div>
+  </aside>
+</div>
+
+<script src="data.js?v=20261006j"></script>
+<script src="app.js?v=20261006j"></script>
+<script src="tasks.js?v=20261006j"></script>
+<script data-pplx-inline-edit>
+(function () {
+  if (window === window.top) return;
+
+  const allowedParentOrigins = ["https://www.perplexity.ai","https://perplexity.ai","https://testing.perplexity.ai","https://staging.perplexity.ai","https://*.preview.i.perplexity.ai","http://perplexity.localhost","http://localhost:1420","http://127.0.0.1:1420","http://localhost:3000","http://127.0.0.1:3000","http://localhost:5173","http://127.0.0.1:5173"];
+  const MAX_FONT_BYTES = 500 * 1024;
+  const MAX_TOTAL_FONT_BYTES = 2 * 1024 * 1024;
+  const DEFAULT_LINE_HEIGHT = 16;
+  let scrollForwarding = false;
+  let scrollRaf = 0;
+  let trustedTopOrigin = null;
+
+  // Allow entries like "https://*.preview.i.perplexity.ai" — the wildcard
+  // matches a single DNS label (no dots), so "https://*.foo" cannot stretch
+  // across multiple labels.
+  function matchesAllowedOrigin(origin) {
+    if (!origin) return false;
+    for (const entry of allowedParentOrigins) {
+      if (!entry.includes("*")) {
+        if (entry === origin) return true;
+        continue;
+      }
+      const pattern = new RegExp(
+        "^" +
+          entry.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^.]+") +
+          "$",
+      );
+      if (pattern.test(origin)) return true;
+    }
+    return false;
+  }
+
+  // Trust decision: when the sender is same-origin-visible (event.origin is a
+  // real origin like https://www.perplexity.ai) we trust event.origin directly.
+  // When event.origin is "null" (opaque broker srcdoc), we fall back to the
+  // broker's stamped `parentOrigin` to identify the top window. The fallback
+  // is claim-only — we rely on the browser's native `targetOrigin` enforcement
+  // on the response path (see postToTrustedTop) to ensure replies can't be
+  // delivered to anyone but the actual top window of that claimed origin.
+  function getTrustedParentOrigin(event) {
+    const forwardedParentOrigin =
+      typeof event.data.parentOrigin === "string" ? event.data.parentOrigin : null;
+    const parentOrigin = event.origin === "null" ? forwardedParentOrigin : event.origin;
+    return matchesAllowedOrigin(parentOrigin) ? parentOrigin : null;
+  }
+
+  // All responses go to window.top with targetOrigin = the allowlisted origin.
+  // An attacker that iframes us inside their own null-origin broker can claim
+  // any parentOrigin they like, but the browser will drop the reply whenever
+  // the real top's origin doesn't match — so the screenshot never leaves.
+  function postToTrustedTop(message) {
+    if (!trustedTopOrigin) return;
+    try {
+      window.top.postMessage(message, trustedTopOrigin);
+    } catch (_error) {}
+  }
+
+  function inlineAll(original, clone) {
+    if (original.nodeType !== 1 || clone.nodeType !== 1) return;
+
+    try {
+      const computedStyle = getComputedStyle(original);
+      // cssText on a computed style is the serialized declaration in modern
+      // Chromium/Safari — a single read beats enumerating ~400 longhand
+      // properties. Firefox returns "" here, so we fall back on empty.
+      const serialized = computedStyle.cssText;
+      if (serialized) {
+        clone.style.cssText = serialized;
+      } else {
+        const parts = new Array(computedStyle.length);
+        for (let index = 0; index < computedStyle.length; index += 1) {
+          const property = computedStyle[index];
+          parts[index] = `${property}:${computedStyle.getPropertyValue(property)};`;
+        }
+        clone.style.cssText = parts.join("");
+      }
+    } catch (_error) {}
+
+    const originalChildren = original.children;
+    const clonedChildren = clone.children;
+    for (
+      let index = 0;
+      index < originalChildren.length && index < clonedChildren.length;
+      index += 1
+    ) {
+      inlineAll(originalChildren[index], clonedChildren[index]);
+    }
+  }
+
+  function extractFontUrl(srcValue) {
+    const matches = [
+      ...srcValue.matchAll(
+        /url\(["']?([^"')]+)["']?\)(?:\s*format\(["']?([^"')]+)["']?\))?/gi,
+      ),
+    ];
+    if (matches.length === 0) return null;
+    const woff2 = matches.find((m) => m[2] && m[2].toLowerCase().includes("woff2"));
+    if (woff2) return woff2[1];
+    const woff = matches.find((m) => m[2] && m[2].toLowerCase().includes("woff"));
+    if (woff) return woff[1];
+    return matches[0][1];
+  }
+
+  // Cache resolved font URL -> data URI across captures. Fonts on a page
+  // essentially never change, and a batch run emits multiple captures back to
+  // back — without this we'd refetch + re-base64 every time.
+  const fontDataUriCache = new Map();
+  const SRC_DECLARATION_RE = /src\s*:\s*[^;}]+/i;
+
+  async function fetchAsDataUri(url) {
+    if (fontDataUriCache.has(url)) return fontDataUriCache.get(url);
+    let dataUri = null;
+    try {
+      const response = await fetch(url, { mode: "cors", credentials: "omit" });
+      if (response.ok) {
+        const blob = await response.blob();
+        if (blob.size <= MAX_FONT_BYTES) {
+          dataUri = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () =>
+              resolve(typeof reader.result === "string" ? reader.result : null);
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(blob);
+          });
+        }
+      }
+    } catch (_error) {
+      dataUri = null;
+    }
+    fontDataUriCache.set(url, dataUri);
+    return dataUri;
+  }
+
+  function collectFontFaceRuleTexts() {
+    const rules = [];
+    for (const sheet of document.styleSheets) {
+      let cssRules;
+      try {
+        cssRules = sheet.cssRules;
+      } catch (_error) {
+        continue;
+      }
+      if (!cssRules) continue;
+      for (const rule of cssRules) {
+        const cssText = rule.cssText || "";
+        if (cssText.startsWith("@font-face")) rules.push(cssText);
+      }
+    }
+    return rules;
+  }
+
+  async function buildInlinedFontCss() {
+    const ruleTexts = collectFontFaceRuleTexts();
+    if (ruleTexts.length === 0) return null;
+
+    const resolved = ruleTexts.map((cssText) => {
+      if (!SRC_DECLARATION_RE.test(cssText)) return null;
+      const srcMatch = cssText.match(/src\s*:\s*([^;}]+)[;}]/i);
+      if (!srcMatch) return null;
+      const url = extractFontUrl(srcMatch[1]);
+      if (!url) return null;
+      try {
+        return { cssText, url: new URL(url, document.baseURI).href };
+      } catch (_error) {
+        return null;
+      }
+    });
+
+    const dataUris = await Promise.all(
+      resolved.map((entry) => (entry ? fetchAsDataUri(entry.url) : Promise.resolve(null))),
+    );
+
+    const inlined = [];
+    let totalBytes = 0;
+    for (let index = 0; index < resolved.length; index += 1) {
+      const entry = resolved[index];
+      const dataUri = dataUris[index];
+      if (!entry || !dataUri) continue;
+      const approxBytes = dataUri.length * 0.75;
+      if (totalBytes + approxBytes > MAX_TOTAL_FONT_BYTES) break;
+      totalBytes += approxBytes;
+      inlined.push(entry.cssText.replace(SRC_DECLARATION_RE, `src: url("${dataUri}")`));
+    }
+    return inlined.length > 0 ? inlined.join("\n") : null;
+  }
+
+  function stripExternal(clone) {
+    const images = clone.querySelectorAll("img");
+    for (let index = 0; index < images.length; index += 1) {
+      const src = images[index].getAttribute("src");
+      if (src && !src.startsWith("data:")) images[index].removeAttribute("src");
+    }
+
+    const elements = clone.querySelectorAll("*");
+    for (let index = 0; index < elements.length; index += 1) {
+      const style = elements[index].style.cssText;
+      if (style && style.includes("url(")) {
+        elements[index].style.cssText = style.replace(
+          /url\(["']?(?!data:)[^)"']*["']?\)/gi,
+          "none",
+        );
+      }
+    }
+  }
+
+  function emitScroll() {
+    scrollRaf = 0;
+    if (!scrollForwarding) return;
+    postToTrustedTop({
+      type: "INLINE_EDIT_SCROLL",
+      scrollX: window.scrollX,
+      scrollY: window.scrollY,
+    });
+  }
+
+  window.addEventListener(
+    "scroll",
+    function () {
+      if (!scrollForwarding || scrollRaf) return;
+      scrollRaf = requestAnimationFrame(emitScroll);
+    },
+    { passive: true, capture: true },
+  );
+
+  async function handleCaptureRequest(event) {
+    const requestId = event.data.requestId;
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+
+    function postResult(dataUrl) {
+      postToTrustedTop({
+        type: "INLINE_EDIT_SCREENSHOT_RESULT",
+        requestId,
+        dataUrl,
+        scrollX,
+        scrollY,
+      });
+    }
+
+    try {
+      // Wait for any pending web fonts to resolve so both inline metrics and
+      // the @font-face inlining below see the same loaded faces.
+      if (document.fonts && document.fonts.ready) {
+        try {
+          await document.fonts.ready;
+        } catch (_error) {}
+      }
+
+      const clone = document.documentElement.cloneNode(true);
+      inlineAll(document.documentElement, clone);
+
+      const removedNodes = clone.querySelectorAll("script,link[rel=\"stylesheet\"],style");
+      for (let index = 0; index < removedNodes.length; index += 1) {
+        removedNodes[index].remove();
+      }
+
+      stripExternal(clone);
+
+      // Re-embed web fonts as data-URI @font-face rules so the SVG rasterizer
+      // can resolve them — external font URLs aren't fetched during
+      // foreignObject rendering, which would otherwise force a fallback face
+      // and change text metrics.
+      const inlinedFontCss = await buildInlinedFontCss();
+      if (inlinedFontCss) {
+        const styleEl = document.createElement("style");
+        styleEl.textContent = inlinedFontCss;
+        const head = clone.querySelector("head");
+        if (head) head.appendChild(styleEl);
+        else clone.insertBefore(styleEl, clone.firstChild);
+      }
+
+      const html = new XMLSerializer().serializeToString(clone);
+      const svg =
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">` +
+        '<foreignObject width="100%" height="100%">' +
+        `<div xmlns="http://www.w3.org/1999/xhtml" style="width:${width}px;height:${height}px;overflow:hidden">` +
+        `<div style="position:relative;left:-${scrollX}px;top:-${scrollY}px">` +
+        html +
+        "</div></div></foreignObject></svg>";
+      const svgUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+      const image = new Image();
+      image.onload = function () {
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d").drawImage(image, 0, 0);
+        postResult(canvas.toDataURL("image/png"));
+      };
+      image.onerror = function () {
+        postResult(null);
+      };
+      image.src = svgUrl;
+    } catch (_error) {
+      postResult(null);
+    }
+  }
+
+  window.addEventListener("message", function (event) {
+    if (!event.data) return;
+    // Only accept messages from the direct parent frame. Blocks sibling /
+    // unrelated-window postMessage senders that could otherwise reach us.
+    if (event.source !== window.parent) return;
+
+    const trustedParentOrigin = getTrustedParentOrigin(event);
+    if (!trustedParentOrigin) return;
+    trustedTopOrigin = trustedParentOrigin;
+
+    if (event.data.type === "INLINE_EDIT_SCROLL_START") {
+      scrollForwarding = true;
+      emitScroll();
+      return;
+    }
+
+    if (event.data.type === "INLINE_EDIT_SCROLL_STOP") {
+      scrollForwarding = false;
+      if (scrollRaf) cancelAnimationFrame(scrollRaf);
+      scrollRaf = 0;
+      return;
+    }
+
+    if (event.data.type === "INLINE_EDIT_SCROLL_BY") {
+      const { deltaX, deltaY, deltaMode } = event.data;
+      if (!scrollForwarding || !Number.isFinite(deltaX) || !Number.isFinite(deltaY)) return;
+      if (deltaMode !== 0 && deltaMode !== 1 && deltaMode !== 2) return;
+      const lineHeight =
+        parseFloat(getComputedStyle(document.documentElement).lineHeight) || DEFAULT_LINE_HEIGHT;
+      const scaleX = deltaMode === 1 ? lineHeight : deltaMode === 2 ? window.innerWidth : 1;
+      const scaleY = deltaMode === 1 ? lineHeight : deltaMode === 2 ? window.innerHeight : 1;
+      // The selection overlay receives the wheel event instead of this iframe.
+      // Instant scrolling preserves trackpad deltas even on smooth-scroll sites.
+      window.scrollBy({ left: deltaX * scaleX, top: deltaY * scaleY, behavior: "instant" });
+      emitScroll();
+      return;
+    }
+
+    if (event.data.type !== "INLINE_EDIT_CAPTURE_REQUEST") return;
+
+    handleCaptureRequest(event);
+  });
+})();
+
+</script></body>
+</html>
