@@ -1,7 +1,8 @@
 # XLeRobot 分工&時程 共用資料 API（Python 標準函式庫，SQLite）
-import json, os, sqlite3, threading, time, uuid, re, mimetypes
+import json, os, sqlite3, threading, time, uuid, re, mimetypes, urllib.request, urllib.parse
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from datetime import datetime, timezone, timedelta
+import hashlib, hmac
 
 DB = os.environ.get("TASK_DB", os.path.join(os.path.dirname(os.path.abspath(__file__)), "data.db"))
 PORT = int(os.environ.get("PORT", "8000"))
@@ -12,11 +13,55 @@ MAX_UPLOAD = 50 * 1024 * 1024
 ALLOWED_EXT = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".zip", ".txt", ".csv"}
 TZ = timezone(timedelta(hours=8))
 
-APP_VERSION = os.environ.get("APP_VERSION", "v1.1.1")
+# Railway Storage Bucket (S3-compatible). If these variables are present, new
+# attachments are stored in the bucket; existing Volume attachments stay local.
+S3_ENDPOINT = os.environ.get("AWS_ENDPOINT_URL", "").rstrip("/")
+S3_BUCKET = os.environ.get("AWS_S3_BUCKET_NAME", "")
+S3_REGION = os.environ.get("AWS_DEFAULT_REGION", "auto") or "auto"
+S3_ACCESS = os.environ.get("AWS_ACCESS_KEY_ID", "")
+S3_SECRET = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
+S3_ENABLED = all((S3_ENDPOINT, S3_BUCKET, S3_ACCESS, S3_SECRET))
+
+def _sig_key(key, date, region, service="s3"):
+    k_date = hmac.new(("AWS4" + key).encode(), date.encode(), hashlib.sha256).digest()
+    k_region = hmac.new(k_date, region.encode(), hashlib.sha256).digest()
+    k_service = hmac.new(k_region, service.encode(), hashlib.sha256).digest()
+    return hmac.new(k_service, b"aws4_request", hashlib.sha256).digest()
+
+def s3_request(method, key, data=None, content_type="application/octet-stream"):
+    if not S3_ENABLED:
+        raise RuntimeError("bucket not configured")
+    key = key.lstrip("/")
+    encoded_key = urllib.parse.quote(key, safe="/-_.~")
+    base = urllib.parse.urlsplit(S3_ENDPOINT)
+    host = base.netloc
+    base_path = base.path.rstrip("/")
+    canonical_uri = f"{base_path}/{urllib.parse.quote(S3_BUCKET, safe='-_.~')}/{encoded_key}"
+    url = urllib.parse.urlunsplit((base.scheme, host, canonical_uri, "", ""))
+    body = data if data is not None else b""
+    payload_hash = hashlib.sha256(body).hexdigest()
+    now = datetime.now(timezone.utc)
+    amz_date = now.strftime("%Y%m%dT%H%M%SZ")
+    date = now.strftime("%Y%m%d")
+    headers = {"host": host, "x-amz-content-sha256": payload_hash, "x-amz-date": amz_date}
+    if method == "PUT": headers["content-type"] = content_type
+    signed_names = ";".join(sorted(headers))
+    canonical_headers = "".join(f"{k}:{headers[k].strip()}\n" for k in sorted(headers))
+    canonical_request = "\n".join([method, canonical_uri, "", canonical_headers, signed_names, payload_hash])
+    scope = f"{date}/{S3_REGION}/s3/aws4_request"
+    string_to_sign = "\n".join(["AWS4-HMAC-SHA256", amz_date, scope, hashlib.sha256(canonical_request.encode()).hexdigest()])
+    signature = hmac.new(_sig_key(S3_SECRET, date, S3_REGION), string_to_sign.encode(), hashlib.sha256).hexdigest()
+    auth = f"AWS4-HMAC-SHA256 Credential={S3_ACCESS}/{scope}, SignedHeaders={signed_names}, Signature={signature}"
+    req_headers = {"Authorization": auth, "X-Amz-Date": amz_date, "X-Amz-Content-Sha256": payload_hash}
+    if method == "PUT": req_headers["Content-Type"] = content_type
+    req = urllib.request.Request(url, data=(body if method == "PUT" else None), headers=req_headers, method=method)
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        return resp.read(), resp.headers
+
+APP_VERSION = os.environ.get("APP_VERSION", "v1.2.0")
 DEPLOY_TIME = datetime.now(TZ)
 DEPLOY_TIME_TEXT = DEPLOY_TIME.strftime("%Y 年 %m 月 %d 日 %H:%M（UTC+8）")
 
-import hashlib, hmac
 ADMIN_HASH = os.environ.get("ADMIN_KEY_HASH", "")
 def is_admin(h):
     k = h.headers.get("X-Admin-Key", "")
@@ -55,6 +100,9 @@ def init():
         cols = {r[1] for r in c.execute("PRAGMA table_info(tasks)")}
         for col, ddl in (("result", "TEXT DEFAULT ''"), ("member_done", "INTEGER DEFAULT 0"), ("member_done_at", "TEXT DEFAULT ''")):
             if col not in cols: c.execute(f"ALTER TABLE tasks ADD COLUMN {col} {ddl}")
+        acols = {r[1] for r in c.execute("PRAGMA table_info(attachments)")}
+        if "storage" not in acols:
+            c.execute("ALTER TABLE attachments ADD COLUMN storage TEXT DEFAULT 'local'")
         if c.execute("SELECT v FROM meta WHERE k='seeded'").fetchone() is None:
             seed(c)
             c.execute("INSERT OR REPLACE INTO meta VALUES('seeded','1')")
@@ -176,9 +224,17 @@ class H(BaseHTTPRequestHandler):
             with LOCK, conn() as c:
                 a = c.execute("SELECT * FROM attachments WHERE id=?", (m.group(1),)).fetchone()
             if not a: return self._send(404, {"error": "not found"})
-            fp = os.path.join(UPLOAD_DIR, a["stored_name"])
-            if not os.path.isfile(fp): return self._send(404, {"error": "file missing"})
-            with open(fp, "rb") as f: b = f.read()
+            storage = a["storage"] if "storage" in a.keys() else "local"
+            try:
+                if storage == "bucket":
+                    b, _ = s3_request("GET", "uploads/" + a["stored_name"])
+                else:
+                    fp = os.path.join(UPLOAD_DIR, a["stored_name"])
+                    if not os.path.isfile(fp): return self._send(404, {"error": "file missing"})
+                    with open(fp, "rb") as f: b = f.read()
+            except Exception as e:
+                print("attachment read failed:", repr(e), flush=True)
+                return self._send(502, {"error": "file storage unavailable"})
             self.send_response(200)
             self.send_header("Content-Type", a["mime"] or "application/octet-stream")
             safe = re.sub(r'[^A-Za-z0-9._-]', '_', a["original_name"])
@@ -230,10 +286,18 @@ class H(BaseHTTPRequestHandler):
                 if not c.execute("SELECT 1 FROM tasks WHERE id=?", (m.group(1),)).fetchone(): return self._send(404, {"error": "task not found"})
             aid = uuid.uuid4().hex[:16]; stored = aid + ext
             data = self.rfile.read(n)
-            with open(os.path.join(UPLOAD_DIR, stored), "wb") as f: f.write(data)
             mime = self.headers.get("Content-Type") or mimetypes.guess_type(name)[0] or "application/octet-stream"
+            storage = "bucket" if S3_ENABLED else "local"
+            try:
+                if storage == "bucket":
+                    s3_request("PUT", "uploads/" + stored, data, mime)
+                else:
+                    with open(os.path.join(UPLOAD_DIR, stored), "wb") as f: f.write(data)
+            except Exception as e:
+                print("attachment upload failed:", repr(e), flush=True)
+                return self._send(502, {"error": "upload storage unavailable"})
             with LOCK, conn() as c:
-                c.execute("INSERT INTO attachments(id,task_id,original_name,stored_name,mime,size,created) VALUES(?,?,?,?,?,?,?)", (aid,m.group(1),name,stored,mime,n,now_s()))
+                c.execute("INSERT INTO attachments(id,task_id,original_name,stored_name,mime,size,created,storage) VALUES(?,?,?,?,?,?,?,?)", (aid,m.group(1),name,stored,mime,n,now_s(),storage))
                 r=bump(c); return self._send(200,{"rev":r,"tasks":rows(c,is_admin(self))})
         if self._deny(): return
         try: d = self._body()
@@ -297,11 +361,17 @@ class H(BaseHTTPRequestHandler):
         fm = re.match(r"^/api/attachments/([\w-]+)$", p)
         if fm:
             with LOCK, conn() as c:
-                a=c.execute("SELECT stored_name FROM attachments WHERE id=?",(fm.group(1),)).fetchone()
+                a=c.execute("SELECT stored_name,storage FROM attachments WHERE id=?",(fm.group(1),)).fetchone()
                 if not a: return self._send(404,{"error":"not found"})
+                storage = a["storage"] if "storage" in a.keys() else "local"
+                try:
+                    if storage == "bucket": s3_request("DELETE", "uploads/" + a["stored_name"])
+                    else: os.remove(os.path.join(UPLOAD_DIR,a["stored_name"]))
+                except FileNotFoundError: pass
+                except Exception as e:
+                    print("attachment delete failed:", repr(e), flush=True)
+                    return self._send(502,{"error":"file storage unavailable"})
                 c.execute("DELETE FROM attachments WHERE id=?",(fm.group(1),)); r=bump(c)
-                try: os.remove(os.path.join(UPLOAD_DIR,a["stored_name"]))
-                except OSError: pass
                 return self._send(200,{"rev":r,"tasks":rows(c,True)})
         m = re.match(r"^/api/tasks/([\w-]+)$", p)
         if not m: return self._send(404, {"error": "not found"})
@@ -311,5 +381,5 @@ class H(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     init()
-    print(f"listening on {PORT}, db={DB}", flush=True)
+    print(f"listening on {PORT}, db={DB}, attachment_storage={'bucket' if S3_ENABLED else 'local'}", flush=True)
     ThreadingHTTPServer(("0.0.0.0", PORT), H).serve_forever()
