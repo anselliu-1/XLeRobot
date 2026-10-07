@@ -138,6 +138,8 @@
     if (el.dataset.upload) {
       const f = el.files && el.files[0]; if (!f) return;
       if (f.size > 50 * 1024 * 1024) { alert("單一附件上限為 50 MB。"); el.value=""; return; }
+      const ok = confirm(`確認上傳附件？\n\n檔案：${f.name}\n\n⚠️ 請確認檔案內容與版本正確。\n附件一旦上傳，一般組員無法自行刪除，僅管理者有權限刪除。`);
+      if (!ok) { el.value=""; return; }
       const lab=el.closest(".uploadbtn"), old=lab.firstChild.textContent; lab.firstChild.textContent="上傳中…"; el.disabled=true; pending=true;
       fetch(API + "/api/tasks/" + el.dataset.upload + "/attachments", {method:"POST", headers:{"Content-Type":f.type||"application/octet-stream","X-File-Name":encodeURIComponent(f.name),...hdr()}, body:f})
         .then(async r=>{ if(!r.ok){let d={};try{d=await r.json()}catch(_){};throw new Error(d.error||r.status)} return r.json(); })
