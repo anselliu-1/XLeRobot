@@ -32,7 +32,7 @@
   // 負責者可多人：以「、」分隔儲存
   const people = w => String(w || "").split(/[、,，;；\/]+/).map(x => x.trim()).filter(Boolean);
   const joinP = arr => [...new Set(arr.map(x => x.trim()).filter(Boolean))].slice(0, 4).join("、");
-  const norm = t => ({ ...t, who: t.who || "", due: t.due || "", done_date: t.done_date || "", note: t.note || "", result: t.result || "", member_done_at: t.member_done_at || "" });
+  const norm = t => ({ ...t, attachments: Array.isArray(t.attachments) ? t.attachments : [], who: t.who || "", due: t.due || "", done_date: t.done_date || "", note: t.note || "", result: t.result || "", member_done_at: t.member_done_at || "" });
   function apply(d) { if (d && Array.isArray(d.tasks)) { tasks = d.tasks.map(norm); rev = d.rev; } }
   async function call(method, path, body) {
     pending = true;
@@ -105,7 +105,11 @@
         <input class="in" type="date" ${ro} data-k="due" value="${esc(t.due)}" aria-label="截止">
         <select class="in pri p${PRI[t.pri]}" ${ro} data-k="pri" aria-label="優先級">${["高", "中", "低"].map(p => `<option${p === t.pri ? " selected" : ""}>${p}</option>`).join("")}</select>
         <textarea class="in" rows="1" ${ro} data-k="note" placeholder="—" aria-label="備註">${esc(t.note)}</textarea>
-        <textarea class="in res" rows="1" data-k="result" placeholder="填寫成果、量測數據或連結" aria-label="成果">${esc(t.result)}</textarea>
+        <div class="resultbox"><textarea class="in res" rows="1" data-k="result" placeholder="填寫成果、量測數據或連結" aria-label="成果">${esc(t.result)}</textarea>
+          <div class="atts">${(t.attachments||[]).map(a => { const img=/^image\//.test(a.mime||""); return `<div class="att">${img ? `<img src="${esc(a.url)}" alt="">` : `<span class="fileico">📎</span>`}<a href="${esc(a.url)}" target="_blank" title="${esc(a.original_name)}">${esc(a.original_name)}</a><small>${a.size<1048576?Math.max(1,Math.round(a.size/1024))+" KB":(a.size/1048576).toFixed(1)+" MB"}</small>${isAdmin?`<button type="button" class="attdel" data-attdel="${a.id}" title="刪除附件">×</button>`:""}</div>`; }).join("")}
+          </div>
+          <label class="uploadbtn">＋ 上傳附件<input type="file" data-upload="${t.id}" accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.txt,.csv" hidden></label><small class="uploadhint">圖片、PDF、Office、ZIP 等，單檔上限 50 MB</small>
+        </div>
         ${isAdmin ? `<div class="ckc rv"><label class="ck"><input type="checkbox" data-k="done" ${t.done ? "checked" : ""} aria-label="組長複檢確認"></label><input class="in dt" type="datetime-local" data-k="done_date" value="${esc(dtIn(t.done_date))}" aria-label="複檢確認時間"></div>
         <button class="del" data-del="${t.id}" title="刪除" aria-label="刪除">×</button>` : ""}
       </div>`).join("") : `<div class="tk empty">${rev ? "沒有符合條件的工作。" : "正在載入共用清單…"}</div>`);
@@ -131,6 +135,16 @@
   const tbl = $("#tkTable");
   tbl.addEventListener("change", e => {
     const el = e.target, row = el.closest(".tk"); if (!row) return;
+    if (el.dataset.upload) {
+      const f = el.files && el.files[0]; if (!f) return;
+      if (f.size > 50 * 1024 * 1024) { alert("單一附件上限為 50 MB。"); el.value=""; return; }
+      const lab=el.closest(".uploadbtn"), old=lab.firstChild.textContent; lab.firstChild.textContent="上傳中…"; el.disabled=true; pending=true;
+      fetch(API + "/api/tasks/" + el.dataset.upload + "/attachments", {method:"POST", headers:{"Content-Type":f.type||"application/octet-stream","X-File-Name":encodeURIComponent(f.name),...hdr()}, body:f})
+        .then(async r=>{ if(!r.ok){let d={};try{d=await r.json()}catch(_){};throw new Error(d.error||r.status)} return r.json(); })
+        .then(d=>{apply(d);setSync(true);render();})
+        .catch(err=>{alert("附件上傳失敗："+err.message);setSync(false);})
+        .finally(()=>{pending=false;}); return;
+    }
     if (el.classList.contains("w")) {
       const who = joinP([...el.closest(".whos").querySelectorAll("input")].flatMap(i => people(i.value)));
       call("PATCH", "/api/tasks/" + row.dataset.id, { who }).catch(() => {}); return;
@@ -142,6 +156,8 @@
   tbl.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey && e.target.matches(".in")) { e.preventDefault(); e.target.blur(); } });
   tbl.addEventListener("input", e => { if (e.target.tagName === "TEXTAREA") { e.target.style.height = "auto"; e.target.style.height = e.target.scrollHeight + 2 + "px"; } });
   tbl.addEventListener("click", e => {
+    const aid=e.target.dataset.attdel;
+    if(aid){ if(confirm("刪除這個附件？")) call("DELETE","/api/attachments/"+aid).catch(()=>{}); return; }
     const id = e.target.dataset.del; if (!id) return;
     const t = tasks.find(x => x.id === id);
     if (confirm("刪除這項工作？全組都會看不到。\n" + (t ? t.task : ""))) call("DELETE", "/api/tasks/" + id).catch(() => {});

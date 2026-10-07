@@ -6,9 +6,13 @@ from datetime import datetime, timezone, timedelta
 DB = os.environ.get("TASK_DB", os.path.join(os.path.dirname(os.path.abspath(__file__)), "data.db"))
 PORT = int(os.environ.get("PORT", "8000"))
 LOCK = threading.Lock()
+UPLOAD_DIR = os.environ.get("UPLOAD_DIR", os.path.join(os.path.dirname(DB), "uploads"))
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+MAX_UPLOAD = 50 * 1024 * 1024
+ALLOWED_EXT = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".zip", ".txt", ".csv"}
 TZ = timezone(timedelta(hours=8))
 
-APP_VERSION = os.environ.get("APP_VERSION", "v1.1.0")
+APP_VERSION = os.environ.get("APP_VERSION", "v1.1.1")
 DEPLOY_TIME = datetime.now(TZ)
 DEPLOY_TIME_TEXT = DEPLOY_TIME.strftime("%Y 年 %m 月 %d 日 %H:%M（UTC+8）")
 
@@ -44,6 +48,10 @@ def init():
             id TEXT PRIMARY KEY, n INTEGER, task TEXT NOT NULL, who TEXT DEFAULT '', due TEXT DEFAULT '',
             done_date TEXT DEFAULT '', pri TEXT DEFAULT '中', note TEXT DEFAULT '', done INTEGER DEFAULT 0, updated REAL)""")
         c.execute("CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT)")
+        c.execute("""CREATE TABLE IF NOT EXISTS attachments(
+            id TEXT PRIMARY KEY, task_id TEXT NOT NULL, original_name TEXT NOT NULL, stored_name TEXT NOT NULL,
+            mime TEXT DEFAULT 'application/octet-stream', size INTEGER DEFAULT 0, created TEXT DEFAULT '',
+            FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE)""")
         cols = {r[1] for r in c.execute("PRAGMA table_info(tasks)")}
         for col, ddl in (("result", "TEXT DEFAULT ''"), ("member_done", "INTEGER DEFAULT 0"), ("member_done_at", "TEXT DEFAULT ''")):
             if col not in cols: c.execute(f"ALTER TABLE tasks ADD COLUMN {col} {ddl}")
@@ -68,10 +76,15 @@ def rev(c):
     return int(c.execute("SELECT v FROM meta WHERE k='rev'").fetchone()[0])
 
 def rows(c, admin=True):
+    amap = {}
+    for a in c.execute("SELECT id,task_id,original_name,mime,size,created FROM attachments ORDER BY created"):
+        d = dict(a); d["url"] = "/api/files/" + d["id"]
+        amap.setdefault(d.pop("task_id"), []).append(d)
     out = []
     for r in c.execute("SELECT * FROM tasks ORDER BY n"):
         d = dict(r); d["done"] = bool(d["done"]); d["member_done"] = bool(d.get("member_done"))
         for k in ("result", "member_done_at"): d[k] = d.get(k) or ""
+        d["attachments"] = amap.get(d["id"], [])
         if not admin:
             d.pop("done", None); d.pop("done_date", None)
         out.append(d)
@@ -158,6 +171,20 @@ class H(BaseHTTPRequestHandler):
                 if since and since.isdigit() and int(since) == r:
                     return self._send(200, {"rev": r, "unchanged": True})
                 return self._send(200, {"rev": r, "tasks": rows(c, is_admin(self))})
+        m = re.match(r"^/api/files/([\w-]+)$", p)
+        if m:
+            with LOCK, conn() as c:
+                a = c.execute("SELECT * FROM attachments WHERE id=?", (m.group(1),)).fetchone()
+            if not a: return self._send(404, {"error": "not found"})
+            fp = os.path.join(UPLOAD_DIR, a["stored_name"])
+            if not os.path.isfile(fp): return self._send(404, {"error": "file missing"})
+            with open(fp, "rb") as f: b = f.read()
+            self.send_response(200)
+            self.send_header("Content-Type", a["mime"] or "application/octet-stream")
+            safe = re.sub(r'[^A-Za-z0-9._-]', '_', a["original_name"])
+            self.send_header("Content-Disposition", 'inline; filename="%s"' % safe)
+            self.send_header("Content-Length", str(len(b)))
+            self.end_headers(); self.wfile.write(b); return
         # Serve frontend/static files from the project directory.
         # API routes above keep their existing behavior.
         root = os.path.dirname(os.path.abspath(__file__))
@@ -188,8 +215,27 @@ class H(BaseHTTPRequestHandler):
         self._send(403, {"error": "owner only"}); return True
 
     def do_POST(self):
-        if self._deny(): return
         p = self._path()
+        m = re.match(r"^/api/tasks/([\w-]+)/attachments$", p)
+        if m:
+            n = int(self.headers.get("Content-Length") or 0)
+            if n <= 0 or n > MAX_UPLOAD: return self._send(413, {"error": "file too large (max 50 MB)"})
+            name = self.headers.get("X-File-Name", "upload.bin")
+            try: name = __import__("urllib.parse", fromlist=["unquote"]).unquote(name)
+            except Exception: pass
+            name = os.path.basename(name)[:180]
+            ext = os.path.splitext(name)[1].lower()
+            if ext not in ALLOWED_EXT: return self._send(415, {"error": "file type not allowed"})
+            with LOCK, conn() as c:
+                if not c.execute("SELECT 1 FROM tasks WHERE id=?", (m.group(1),)).fetchone(): return self._send(404, {"error": "task not found"})
+            aid = uuid.uuid4().hex[:16]; stored = aid + ext
+            data = self.rfile.read(n)
+            with open(os.path.join(UPLOAD_DIR, stored), "wb") as f: f.write(data)
+            mime = self.headers.get("Content-Type") or mimetypes.guess_type(name)[0] or "application/octet-stream"
+            with LOCK, conn() as c:
+                c.execute("INSERT INTO attachments(id,task_id,original_name,stored_name,mime,size,created) VALUES(?,?,?,?,?,?,?)", (aid,m.group(1),name,stored,mime,n,now_s()))
+                r=bump(c); return self._send(200,{"rev":r,"tasks":rows(c,is_admin(self))})
+        if self._deny(): return
         try: d = self._body()
         except Exception: return self._send(400, {"error": "bad json"})
         admin = is_admin(self)
@@ -247,7 +293,17 @@ class H(BaseHTTPRequestHandler):
 
     def do_DELETE(self):
         if self._deny(): return
-        m = re.match(r"^/api/tasks/([\w-]+)$", self._path())
+        p = self._path()
+        fm = re.match(r"^/api/attachments/([\w-]+)$", p)
+        if fm:
+            with LOCK, conn() as c:
+                a=c.execute("SELECT stored_name FROM attachments WHERE id=?",(fm.group(1),)).fetchone()
+                if not a: return self._send(404,{"error":"not found"})
+                c.execute("DELETE FROM attachments WHERE id=?",(fm.group(1),)); r=bump(c)
+                try: os.remove(os.path.join(UPLOAD_DIR,a["stored_name"]))
+                except OSError: pass
+                return self._send(200,{"rev":r,"tasks":rows(c,True)})
+        m = re.match(r"^/api/tasks/([\w-]+)$", p)
         if not m: return self._send(404, {"error": "not found"})
         with LOCK, conn() as c:
             c.execute("DELETE FROM tasks WHERE id=?", (m.group(1),))
