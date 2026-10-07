@@ -284,7 +284,7 @@ class H(BaseHTTPRequestHandler):
             if ext not in ALLOWED_EXT: return self._send(415, {"error": "file type not allowed"})
             with LOCK, conn() as c:
                 if not c.execute("SELECT 1 FROM tasks WHERE id=?", (m.group(1),)).fetchone(): return self._send(404, {"error": "task not found"})
-            aid = uuid.uuid4().hex[:16]; stored = aid + ext
+            aid = uuid.uuid4().hex[:16]; stored = aid[:6] + "_" + name
             data = self.rfile.read(n)
             mime = self.headers.get("Content-Type") or mimetypes.guess_type(name)[0] or "application/octet-stream"
             storage = "bucket" if S3_ENABLED else "local"
