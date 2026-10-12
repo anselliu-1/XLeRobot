@@ -232,28 +232,106 @@ def queue_notify(c, event, subject, detail):
         c.execute('INSERT INTO notify_queue(id,event,subject,detail,created) VALUES(?,?,?,?,?)',
                   (uuid.uuid4().hex, event, subject[:200], detail[:1500], time.time()))
 
+
 def mail_worker():
+    # 啟動時間以前的舊通知不自動補發
+    started_at = time.time()
+
     while True:
         try:
+            webhook = os.environ.get(
+                "DISCORD_WEBHOOK_URL", ""
+            ).strip()
+
             with LOCK, conn() as c:
-                cfg=notify_config(c)
-                wait=600 if cfg.get('mode')=='digest' else 0
-                items=c.execute('SELECT * FROM notify_queue WHERE sent=0 AND created<=? ORDER BY created LIMIT 60', (time.time()-wait,)).fetchall()
-                items=[dict(x) for x in items]
-            if items and os.environ.get('SMTP_USER') and os.environ.get('SMTP_APP_PASSWORD') and os.environ.get('NOTIFY_EMAIL'):
-                msg=EmailMessage()
-                msg['From']=os.environ['SMTP_USER']; msg['To']=os.environ['NOTIFY_EMAIL']
-                msg['Subject']='XLeRobot｜' + (items[0]['subject'] if len(items)==1 else f'{len(items)} 項網站更新摘要')
-                msg.set_content('\n\n'.join(f"{x['subject']}\n{x['detail']}" for x in items) +
-                                '\n\n網站：https://xlerobot-production.up.railway.app')
-                with smtplib.SMTP_SSL(os.environ.get('SMTP_HOST','smtp.gmail.com'), int(os.environ.get('SMTP_PORT','465')), context=ssl.create_default_context(), timeout=20) as smtp:
-                    smtp.login(os.environ['SMTP_USER'],os.environ['SMTP_APP_PASSWORD'])
-                    smtp.send_message(msg)
+                cfg = notify_config(c)
+
+                if cfg.get("enabled") and webhook:
+                    wait = (
+                        600 if cfg.get("mode") == "digest"
+                        else 0
+                    )
+
+                    items = c.execute(
+                        """
+                        SELECT * FROM notify_queue
+                        WHERE sent = 0
+                          AND created > ?
+                          AND created <= ?
+                        ORDER BY created
+                        LIMIT 5
+                        """,
+                        (started_at, time.time() - wait)
+                    ).fetchall()
+
+                    items = [dict(x) for x in items]
+                else:
+                    items = []
+
+            if items:
+                title = (
+                    "XLeRobot｜" + items[0]["subject"]
+                    if len(items) == 1
+                    else f"XLeRobot｜{len(items)} 項網站更新"
+                )
+
+                details = "\n\n".join(
+                    f"{x['subject']}\n{x['detail']}"
+                    for x in items
+                )
+
+                message = (
+                    title + "\n\n" + details
+                )[:1800]
+
+                message += (
+                    "\n\n網站："
+                    "https://xlerobot-test-staging.up.railway.app"
+                )
+
+                payload = json.dumps(
+                    {"content": message},
+                    ensure_ascii=False
+                ).encode("utf-8")
+
+                request = urllib.request.Request(
+                    webhook,
+                    data=payload,
+                    headers={
+                        "Content-Type": "application/json",
+                        "User-Agent": "XLeRobot-Notifier"
+                    },
+                    method="POST"
+                )
+
+                with urllib.request.urlopen(
+                    request, timeout=20
+                ) as response:
+                    if response.status not in (200, 204):
+                        raise RuntimeError(
+                            "Discord HTTP "
+                            + str(response.status)
+                        )
+
                 with LOCK, conn() as c:
-                    c.executemany("UPDATE notify_queue SET sent=1,error='' WHERE id=?",[(x['id'],) for x in items])
+                    c.executemany(
+                        """
+                        UPDATE notify_queue
+                        SET sent = 1, error = ''
+                        WHERE id = ?
+                        """,
+                        [(x["id"],) for x in items]
+                    )
+
         except Exception as exc:
-            print('email notification failed:',repr(exc),flush=True)
+            print(
+                "discord notification failed:",
+                type(exc).__name__,
+                flush=True
+            )
+
         time.sleep(20)
+
 
 def purchase_permissions(c):
     row=c.execute("SELECT v FROM meta WHERE k='purchase_permissions'").fetchone()
