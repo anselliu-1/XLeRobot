@@ -29,8 +29,10 @@
     <button data-view="myhw">我的硬體</button>
     <button data-view="power">供電方案</button>
     <button data-view="risks">困難與展出</button>
-    <button data-view="prof">教授問答</button>
+    <button data-view="prof">評審提問與答辯準備</button>
     <button data-view="rules">歸還守則</button>
+    <button data-view="fileadmin" data-admin-tab hidden>檔案管理</button>
+    <button data-view="adminsettings" data-admin-tab hidden>管理員設定</button>
 
     <button data-view="pkg">專題安裝包</button>
     <button data-view="src">依據</button>
@@ -99,6 +101,14 @@
     <label id="buyOwnerField" hidden>負責人（管理員選填）<input name="owner" maxlength="100" placeholder="未指派則留空"></label><label>實際金額（NT$）<input name="actual_price" type="number" min="0" step="0.01" value="0"></label><label>購買連結<input name="url" type="url" placeholder="https://"></label>
     <label>備註<textarea name="note" rows="2"></textarea></label></div>
     <div class="bar"><button class="btn" type="submit">儲存</button><button class="btn ghost" type="button" id="buyCancel">取消</button></div></form>
+  </section>
+
+  <!-- 管理員設定：僅登入管理員可見 -->
+  <section class="view" id="adminsettings">
+    <h2 class="sec first">管理員設定</h2>
+    <p class="muted">此頁僅管理員登入後顯示；設定資料由後端驗證權限。</p>
+    <div class="hw"><header><h3>管理員登入狀態</h3></header><p>管理者模式已啟用。可在「分工 & 時程」登出。</p><button class="btn ghost" id="adminSettingsLogout">管理員登出</button></div>
+    <div class="hw"><header><h3>系統資訊</h3></header><p>測試站：XLeRobot-Staging・v1.3.0 測試版</p></div>
     <details class="legacy" id="purchasePermissionsPanel" hidden><summary>管理員｜報銷權限設定</summary><div class="legacy-body">
     <label><input type="checkbox" id="refundView"> 允許組員查看報銷狀態</label><p><label><input type="checkbox" id="refundEdit"> 允許組員修改報銷狀態（需先允許查看）</label></p>
     <button class="btn" id="purchasePermSave">儲存權限設定</button><p class="muted" id="purchasePermMsg"></p></div></details>
@@ -107,8 +117,14 @@
     <label><input type="checkbox" id="notifyEnabled"> 啟用 Email 通知</label>
     <p><label>寄送方式 <select id="notifyMode"><option value="instant">即時通知</option><option value="digest">10 分鐘合併通知</option></select></label></p>
     <div id="notifyEvents" class="buy-notify-grid"></div><button class="btn" id="notifySave">儲存通知設定</button><p id="notifyMsg" class="muted"></p></div></details>
-  </section>
 
+  </section>
+  <!-- 檔案管理：後端提供管理員專用清單 -->
+  <section class="view" id="fileadmin">
+    <h2 class="sec first">檔案管理</h2><p class="muted">集中查看分工附件、商品圖片及報銷憑證。僅管理員可存取。</p>
+    <div class="bar"><input id="fileSearch" placeholder="搜尋檔名、任務或商品"><select id="fileType"><option value="all">全部類型</option><option value="task">分工附件</option><option value="image">商品圖片</option><option value="receipt">報銷憑證</option></select><button class="btn ghost" id="fileRefresh">重新整理</button></div>
+    <p id="fileMsg" class="muted"></p><div id="fileItems"></div>
+  </section>
   <!-- 討論重點 -->
   <section class="view" id="meet">
     <h2 class="sec first">專題討論重點</h2>
@@ -369,7 +385,8 @@
 <script src="data.js?v=20261007a"></script>
 <script src="app.js?v=20261007a"></script>
 <script src="tasks.js?v=20261007a"></script>
-<script src="purchases.js?v=20261012b"></script>
+<script src="purchases.js?v=20261012c"></script>
+<script src="admin-pages.js?v=20261012a"></script>
 <script>
 async function loadSiteInfo() {
   try {
