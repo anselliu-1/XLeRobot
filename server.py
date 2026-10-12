@@ -312,6 +312,24 @@ class H(BaseHTTPRequestHandler):
             })
         
         if p == "/api/auth": return self._send(200 if is_admin(self) else 403, {"admin": is_admin(self)})
+        if p == '/api/admin/files':
+            if self._deny(): return
+            with LOCK, conn() as c:
+                result=[]
+                for table,kind,parent in [('attachments','task','task_id'),('purchase_images','image','purchase_id'),('purchase_receipts','receipt','purchase_id')]:
+                    for row in c.execute('SELECT * FROM '+table).fetchall():
+                        d=dict(row)
+                        if kind=='task':
+                            t=c.execute('SELECT task FROM tasks WHERE id=?',(d[parent],)).fetchone()
+                            name=t['task'] if t else '(原任務已移除)'
+                        else:
+                            t=c.execute('SELECT name FROM purchases WHERE id=?',(d[parent],)).fetchone()
+                            name=t['name'] if t else '(原商品已移除)'
+                        result.append({'id':d['id'],'kind':kind,'original_name':d['original_name'],
+                            'mime':d['mime'],'size':d['size'],'created':d['created'],
+                            'parent_id':d[parent],'parent_name':name,
+                            'url':('/api/files/' if kind=='task' else '/api/purchase-images/' if kind=='image' else '/api/purchase-receipts/')+d['id']})
+                return self._send(200,{'files':result})
         if p == '/api/purchases':
             with LOCK, conn() as c: return self._send(200, {'purchases':purchase_rows(c,is_admin(self)),'permissions':purchase_permissions(c) if is_admin(self) else {'refund_view':purchase_permissions(c)['refund_view'],'refund_edit':purchase_permissions(c)['refund_edit']}})
         if p == '/api/purchases/permissions':
