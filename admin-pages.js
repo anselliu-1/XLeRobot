@@ -46,6 +46,9 @@
     }catch(e){alert(e.message);}finally{b.disabled=false;b.textContent='下載勾選檔案 ZIP';}
   };
   $('#adminSettingsLogout').onclick=()=>{
+    const original=document.querySelector('#tkAdmin');
+    if(original && original.textContent.includes('登出')){original.click();return;}
+    if(!confirm('確定登出管理員？'))return;
     localStorage.removeItem('xle-admin');auth();
     window.dispatchEvent(new CustomEvent('xle-admin-change',{detail:{admin:false}}));
   };
