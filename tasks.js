@@ -21,6 +21,7 @@
   function adminUI() {
     const b = $("#tkAdmin"); if (b) b.textContent = isAdmin ? "管理者模式・登出" : "管理者登入";
     document.body.classList.toggle("tk-admin", isAdmin);
+    window.dispatchEvent(new CustomEvent("xle-admin-change",{detail:{admin:isAdmin}}));
   }
   let filter = "all", whoF = "", sortBy = "due";
 
