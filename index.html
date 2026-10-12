@@ -237,13 +237,25 @@
 
   <!-- 教授問答 -->
   <section class="view" id="prof">
-    <h2 class="sec first">新方向：教授可能提問</h2><p class="muted">以下是依 10/12 會議方向擬定的準備題，不代表教授實際提問。</p>
+    <h2 class="sec first">新方向：評審提問與答辯準備</h2><p class="muted">以下是依 10/12 會議方向擬定的準備題，不代表教授實際提問。</p>
     <div class="qa">
     <details><summary>為什麼選擇商品選取與自動交付？</summary><p>展示可整合 UI、移動平台、視覺辨識及機械手臂，驗證跨系統協作；實際效能仍需測試。</p></details>
     <details><summary>單臂還是雙臂？</summary><p>目前仍在評估。若採雙臂，必須定義第二隻手臂的具體用途。</p></details>
     <details><summary>車體如何承載手臂？</summary><p>須評估總高度、重心、配重與舵機承載能力，並評估上層平台配置。</p></details>
     <details><summary>如何完成辨識、夾取與交付？</summary><p>規劃先以展示配置圖和操作流程圖定義步驟，再逐項實測；目前不應宣稱整套流程已完成。</p></details>
-    </div><details class="legacy"><summary>歷史教授問答（舊方向）</summary><div class="legacy-body">
+    <details><summary>為什麼需要 AGV 搭配機械手臂？</summary><p>AGV 負責跨貨架與交付站點移動，手臂負責取放物品。重點是移動、辨識與操作的系統整合，並用到站誤差、夾取成功率及全流程時間驗證。</p></details>
+    <details><summary>目前專題實際完成到哪個階段？</summary><p>目前已有底盤與雙臂分別控制的基礎；統一控制、視覺校正與完整自主交付仍需實測。答辯時應依當天實際完成的功能與測試證據更新。</p></details>
+    <details><summary>為什麼需要雙手臂？</summary><p>現有設備具備雙臂，但第二隻手臂應有明確分工；若無法證明雙臂優勢，就先以單臂流程完成穩定展示，再設計比較實驗。</p></details>
+    <details><summary>XLeRobot 是開源平台，你們自己做了什麼？</summary><p>區分官方既有功能與團隊自行完成的整合控制、電瓶配電、任務流程、視覺校正與實驗設計；只有完成且有紀錄的項目才列為成果。</p></details>
+    <details><summary>為什麼改用電瓶？容量怎麼決定？</summary><p>為了讓手臂隨 AGV 移動。應量測實際平均／峰值電流與續航，並比較一顆共用與兩顆獨立電瓶的配線、重量及故障隔離。</p></details>
+    <details><summary>兩隻手臂同時動作，電壓會不會下降？</summary><p>可能發生瞬間壓降。需實測兩臂同動電流、供電端電壓及通訊穩定性，並確認接線、保護與低電壓處置。</p></details>
+    <details><summary>AGV 停靠有偏差，如何精準夾取？</summary><p>規劃到站校正、相機與手臂座標轉換及容許誤差判定；超過容許範圍則重新定位或安全停止。</p></details>
+    <details><summary>相機辨識成功後，怎麼把位置轉成手臂座標？</summary><p>需要相機內外參、相機與機械手臂座標系的校正；透過已知標定物量測轉換誤差，再驗證末端能否到達。</p></details>
+    <details><summary>夾取失敗或商品掉落怎麼辦？</summary><p>將辨識、定位、夾取、交付拆成狀態，設計夾取確認、有限次重試、停止與人工接管，記錄失敗原因。</p></details>
+    <details><summary>怎麼證明系統穩定而不是只成功一次？</summary><p>事先定義成功條件與測試次數，分別量測到站、辨識、夾取、交付及完整任務成功率與耗時，並公開失敗樣本。</p></details>
+    <details><summary>現場展示失敗怎麼辦？</summary><p>準備到場校正、分段展示、人工接管與實測影片；影片標示為預錄，不能代替現場成功率。</p></details>
+    <details><summary>這個專題的機械工程價值是什麼？</summary><p>透過車體重心與配重、手臂負載、可達工作空間、夾持設計、重複定位與供電配置的量測呈現工程取捨。</p></details>
+    </div><details class="legacy"><summary>歷史問答資料（舊方向）</summary><div class="legacy-body">
     <div class="bar">
       <div class="seg" id="profFilter" role="group" aria-label="問題類別"></div>
       <button class="btn ghost" id="revealAll">全部展開</button>
