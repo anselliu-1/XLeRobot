@@ -216,10 +216,18 @@
   <!-- 困難與展出 -->
   <section class="view" id="risks">
     <h2 class="sec first">新方向：展示規劃與待評估事項</h2>
-    <div class="hwgrid"><article class="hw"><header><h3>車體結構與配重｜待評估</h3></header><p>評估降低總高度、上層平台與舵機承載能力。</p></article>
-    <article class="hw"><header><h3>單臂或雙臂｜待評估</h3></header><p>若保留雙臂，需明確定義第二隻手臂的功能。</p></article>
-    <article class="hw"><header><h3>視覺辨識與夾取｜待驗證</h3></header><p>需驗證商品辨識、定位與夾取的穩定性；並非已發生的故障。</p></article>
-    <article class="hw"><header><h3>展示動線｜規劃中</h3></header><p>完成展示配置圖與操作流程圖後再確認場地安排。</p></article></div>
+    <p class="muted">目前專題風險與展示準備，由管理員更新進度；組員可直接查看。</p>
+    <div id="riskItems" class="hwgrid"></div>
+    <p id="riskMsg" class="muted"></p>
+    <form id="riskForm" class="plan" hidden>
+      <h3 id="riskFormTitle">編輯困難與展出</h3>
+      <label>項目名稱<input name="title" required maxlength="160"></label>
+      <label>問題／風險描述<textarea name="description" rows="4"></textarea></label>
+      <label>對策／下一步<textarea name="solution" rows="4"></textarea></label>
+      <label>進度狀態<select name="status"><option>待評估</option><option>規劃中</option><option>進行中</option><option>待驗證</option><option>已完成</option><option>暫緩</option></select></label>
+      <div class="bar"><button class="btn" type="submit">儲存</button><button class="btn ghost" id="riskCancel" type="button">取消</button></div>
+    </form>
+    <div class="bar" id="riskAdminTools" hidden><button class="btn" id="riskNew">新增項目</button></div>
     <details class="legacy"><summary>歷史困難與展出規劃</summary><div class="legacy-body"><h2 class="sec">通用困難點（舊版）</h2>
     <p class="muted">不論選哪一題都會遇到。紅色代表若沒處理，專題很可能卡住。</p>
     <div class="hards" id="hards"></div>
@@ -387,6 +395,7 @@
 <script src="tasks.js?v=20261007a"></script>
 <script src="purchases.js?v=20261012c"></script>
 <script src="admin-pages.js?v=20261012a"></script>
+<script src="risks-admin.js?v=20261012a"></script>
 <script>
 async function loadSiteInfo() {
   try {
