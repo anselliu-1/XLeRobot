@@ -3,8 +3,6 @@ import json, os, sqlite3, threading, time, uuid, re, mimetypes, urllib.request, 
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from datetime import datetime, timezone, timedelta
 import hashlib, hmac
-import smtplib, ssl
-from email.message import EmailMessage
 
 DB = os.environ.get("TASK_DB", os.path.join(os.path.dirname(os.path.abspath(__file__)), "data.db"))
 PORT = int(os.environ.get("PORT", "8000"))
@@ -591,7 +589,7 @@ class H(BaseHTTPRequestHandler):
             with LOCK, conn() as c:
                 c.execute('INSERT INTO purchases(id,name,spec,qty,price,status,url,note,stock,actual_price,updated) VALUES(?,?,?,?,?,?,?,?,?,?,?)',(pid,d['name'],d['spec'],d['qty'],d['price'],d['status'],d['url'],d['note'],d['stock'],d['actual_price'],d['updated']))
                 if owner:c.execute('UPDATE purchases SET owner=? WHERE id=?',(owner,pid))
-                queue_notify(c,'buy_add','新增採購項目',d['name'])
+                queue_notify(c,'buy_add','新增採購項目','商品：'+d['name']+'\n規格：'+str(d.get('spec',''))+'\n數量：'+str(d.get('qty',''))+'\n預估單價：'+str(d.get('price','')))
                 return self._send(200,{'purchases':purchase_rows(c,is_admin(self))})
         receipt=re.fullmatch(r'/api/purchases/([a-f0-9]+)/receipts',p)
         if receipt:
@@ -748,10 +746,18 @@ class H(BaseHTTPRequestHandler):
                 d.update(payload)
                 c.execute('UPDATE purchases SET '+','.join(k+'=?' for k in d)+' WHERE id=?',(*d.values(),pm.group(1)))
                 if old['status']!=d['status']: queue_notify(c,'buy_status','採購狀態更新',d['name']+'：'+old['status']+' → '+d['status'])
-                if old['stock']!=d['stock']:queue_notify(c,'buy_stock','庫存確認更新',d['name']+'：'+d['stock'])
-                if old['owner']!=d['owner']:queue_notify(c,'buy_owner','採購負責人更新',d['name']+'：'+(d['owner'] or '取消指派'))
-                if old['refund']!=d['refund']:queue_notify(c,'buy_refund','報銷狀態更新',d['name']+'：'+d['refund'])
-                if any(old[k]!=d[k] for k in ('name','spec','qty','price','url','note','actual_price')):queue_notify(c,'buy_edit','採購資料修改',d['name'])
+                if old['stock']!=d['stock']:queue_notify(c,'buy_stock','庫存確認更新',d['name']+'：'+str(old['stock'])+' → '+str(d['stock']))
+                if old['owner']!=d['owner']:queue_notify(c,'buy_owner','採購負責人更新',d['name']+'：'+str(old['owner'] or '未指派')+' → '+str(d['owner'] or '未指派'))
+                if old['refund']!=d['refund']:queue_notify(c,'buy_refund','報銷狀態更新',d['name']+'：'+str(old['refund'])+' → '+str(d['refund']))
+                changed = []
+                labels = {'name':'商品名稱','spec':'規格','qty':'數量','price':'預估單價','url':'商品連結','note':'備註','actual_price':'實際單價'}
+                for field, label in labels.items():
+                    if old[field] != d[field]:
+                        previous = str(old[field] if old[field] is not None else '未填寫')
+                        current = str(d[field] if d[field] is not None else '未填寫')
+                        changed.append(label + '：' + previous[:180] + ' → ' + current[:180])
+                if changed:
+                    queue_notify(c,'buy_edit','採購資料修改','商品：'+d['name']+'\n'+'\n'.join(changed))
                 return self._send(200,{'purchases':purchase_rows(c,is_admin(self))})
         m = re.match(r"^/api/tasks/([\w-]+)$", p)
         if not m: return self._send(404, {"error": "not found"})
