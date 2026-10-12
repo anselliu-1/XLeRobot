@@ -224,6 +224,21 @@ def notify_config(c):
     try: return json.loads(row[0]) if row else {'enabled':False,'mode':'instant','events':[]}
     except (ValueError, TypeError): return {'enabled':False,'mode':'instant','events':[]}
 
+def notify_fields(data, fields):
+    return '\n'.join(label + '：' + str(data.get(key)) for key, label in fields if data.get(key) is not None and str(data.get(key)).strip() != '')
+
+def notify_changes(before, after, fields):
+    lines = []
+    for key, label in fields:
+        old = before[key] if key in before.keys() else None
+        new = after.get(key, old)
+        if str(old if old is not None else '') != str(new if new is not None else ''):
+            lines.append(label + '：' + (str(old) if old is not None and str(old).strip() else '（空白）')[:200] + ' → ' + (str(new) if new is not None and str(new).strip() else '（空白）')[:200])
+    return '\n'.join(lines)
+
+PURCHASE_NOTIFY_FIELDS = [('name','品名'),('spec','規格'),('qty','數量'),('price','預估單價'),('actual_price','實際單價'),('status','採購狀態'),('owner','負責人'),('stock','庫存'),('refund','報銷狀態'),('url','購買連結'),('note','備註')]
+TASK_NOTIFY_FIELDS = [('task','工作內容'),('who','負責者'),('due','截止日'),('pri','優先級'),('note','備註'),('result','成果'),('member_done_at','回報時間')]
+
 def queue_notify(c, event, subject, detail):
     conf = notify_config(c)
     if conf.get('enabled') and event in conf.get('events', []):
@@ -589,7 +604,7 @@ class H(BaseHTTPRequestHandler):
             with LOCK, conn() as c:
                 c.execute('INSERT INTO purchases(id,name,spec,qty,price,status,url,note,stock,actual_price,updated) VALUES(?,?,?,?,?,?,?,?,?,?,?)',(pid,d['name'],d['spec'],d['qty'],d['price'],d['status'],d['url'],d['note'],d['stock'],d['actual_price'],d['updated']))
                 if owner:c.execute('UPDATE purchases SET owner=? WHERE id=?',(owner,pid))
-                queue_notify(c,'buy_add','新增採購項目','商品：'+d['name']+'\n規格：'+str(d.get('spec',''))+'\n數量：'+str(d.get('qty',''))+'\n預估單價：'+str(d.get('price','')))
+                queue_notify(c,'buy_add','新增採購項目',notify_fields(dict(d,owner=owner),PURCHASE_NOTIFY_FIELDS))
                 return self._send(200,{'purchases':purchase_rows(c,is_admin(self))})
         receipt=re.fullmatch(r'/api/purchases/([a-f0-9]+)/receipts',p)
         if receipt:
@@ -642,7 +657,7 @@ class H(BaseHTTPRequestHandler):
                 return self._send(502,{'error':'storage unavailable'})
             with LOCK, conn() as c:
                 c.execute('INSERT INTO purchase_images VALUES(?,?,?,?,?,?,?,?)',(aid,im.group(1),name,stored,mime,n,storage,now_s()))
-                queue_notify(c,'buy_image','新增採購圖片',item['name']+'：'+name)
+                queue_notify(c,'buy_image','新增採購圖片','商品：'+item['name']+'\n檔案：'+name)
                 return self._send(200,{'purchases':purchase_rows(c,is_admin(self))})
         m = re.match(r"^/api/tasks/([\w-]+)/attachments$", p)
         if m:
@@ -670,7 +685,7 @@ class H(BaseHTTPRequestHandler):
                 return self._send(502, {"error": "upload storage unavailable"})
             with LOCK, conn() as c:
                 c.execute("INSERT INTO attachments(id,task_id,original_name,stored_name,mime,size,created,storage) VALUES(?,?,?,?,?,?,?,?)", (aid,m.group(1),name,stored,mime,n,now_s(),storage))
-                queue_notify(c,"task_upload","新增成果附件",name); r=bump(c); return self._send(200,{"rev":r,"tasks":rows(c,is_admin(self))})
+                queue_notify(c,"task_upload","新增成果附件","工作內容："+c.execute("SELECT task FROM tasks WHERE id=?",(m.group(1),)).fetchone()["task"]+"\n檔案："+name); r=bump(c); return self._send(200,{"rev":r,"tasks":rows(c,is_admin(self))})
         if self._deny(): return
         try: d = self._body()
         except Exception: return self._send(400, {"error": "bad json"})
@@ -686,7 +701,7 @@ class H(BaseHTTPRequestHandler):
                 tid = uuid.uuid4().hex[:10]
                 c.execute("INSERT INTO tasks(id,n,task,who,due,done_date,pri,note,done,result,updated) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                           (tid, n, o["task"], o.get("who", ""), o.get("due", ""), o.get("done_date", ""), o.get("pri", "中"), o.get("note", ""), o.get("done", 0), o.get("result", ""), time.time()))
-                queue_notify(c,"task_add","新增分工任務",o["task"]); r = bump(c); return self._send(200, {"rev": r, "tasks": rows(c), "id": tid})
+                queue_notify(c,"task_add","新增分工任務",notify_fields(o,TASK_NOTIFY_FIELDS)); r = bump(c); return self._send(200, {"rev": r, "tasks": rows(c), "id": tid})
             if p == "/api/import":
                 arr = d.get("tasks") if isinstance(d, dict) else None
                 if not isinstance(arr, list): return self._send(400, {"error": "no tasks"})
@@ -749,15 +764,9 @@ class H(BaseHTTPRequestHandler):
                 if old['stock']!=d['stock']:queue_notify(c,'buy_stock','庫存確認更新',d['name']+'：'+str(old['stock'])+' → '+str(d['stock']))
                 if old['owner']!=d['owner']:queue_notify(c,'buy_owner','採購負責人更新',d['name']+'：'+str(old['owner'] or '未指派')+' → '+str(d['owner'] or '未指派'))
                 if old['refund']!=d['refund']:queue_notify(c,'buy_refund','報銷狀態更新',d['name']+'：'+str(old['refund'])+' → '+str(d['refund']))
-                changed = []
-                labels = {'name':'商品名稱','spec':'規格','qty':'數量','price':'預估單價','url':'商品連結','note':'備註','actual_price':'實際單價'}
-                for field, label in labels.items():
-                    if old[field] != d[field]:
-                        previous = str(old[field] if old[field] is not None else '未填寫')
-                        current = str(d[field] if d[field] is not None else '未填寫')
-                        changed.append(label + '：' + previous[:180] + ' → ' + current[:180])
-                if changed:
-                    queue_notify(c,'buy_edit','採購資料修改','商品：'+d['name']+'\n'+'\n'.join(changed))
+                changes = notify_changes(old,d,PURCHASE_NOTIFY_FIELDS)
+                if changes:
+                    queue_notify(c,'buy_edit','採購資料修改','商品：'+d['name']+'\n'+changes)
                 return self._send(200,{'purchases':purchase_rows(c,is_admin(self))})
         m = re.match(r"^/api/tasks/([\w-]+)$", p)
         if not m: return self._send(404, {"error": "not found"})
@@ -778,14 +787,18 @@ class H(BaseHTTPRequestHandler):
             if o.get("member_done") == 0 and "member_done_at" not in o: o["member_done_at"] = ""
             sets = ",".join(f"{k}=?" for k in o) + ",updated=?"
             c.execute(f"UPDATE tasks SET {sets} WHERE id=?", (*o.values(), time.time(), m.group(1)))
+            current = dict(cur)
+            current.update(o)
+            summary = notify_fields(current, TASK_NOTIFY_FIELDS)
+            changes = notify_changes(cur, current, TASK_NOTIFY_FIELDS)
             if o.get('member_done') == 1 and not cur['member_done']:
-                queue_notify(c,'task_done','組員回報完成',cur['task'])
+                queue_notify(c,'task_done','組員回報完成',summary)
             elif o.get('member_done') == 0 and cur['member_done']:
-                queue_notify(c,'task_reopen','取消完成回報',cur['task'])
+                queue_notify(c,'task_reopen','取消完成回報',summary)
             elif 'result' in o and o['result']!=cur['result']:
-                queue_notify(c,'task_result','成果內容更新',cur['task'])
-            elif any(k in o and o[k]!=cur[k] for k in ('task','who','due','pri','note')):
-                queue_notify(c,'task_edit','分工內容更新',cur['task'])
+                queue_notify(c,'task_result','成果內容更新',summary + ('\n變更：\n'+changes if changes else ''))
+            elif changes:
+                queue_notify(c,'task_edit','分工內容更新',summary + '\n變更：\n'+changes)
             r = bump(c); return self._send(200, {"rev": r, "tasks": rows(c, admin)})
 
     def do_DELETE(self):
