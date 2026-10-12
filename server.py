@@ -1,5 +1,5 @@
 # XLeRobot 分工&時程 共用資料 API（Python 標準函式庫，SQLite）
-import json, os, sqlite3, threading, time, uuid, re, mimetypes, urllib.request, urllib.parse
+import json, os, sqlite3, threading, time, uuid, re, mimetypes, urllib.request, urllib.parse, io, zipfile
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from datetime import datetime, timezone, timedelta
 import hashlib, hmac
@@ -116,7 +116,7 @@ def init():
           id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT DEFAULT '',
           solution TEXT DEFAULT '', status TEXT DEFAULT '待評估',
           updated TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1)""")
-        if c.execute('SELECT COUNT(*) FROM project_risks').fetchone()[0] == 0:
+        if c.execute("SELECT v FROM meta WHERE k='project_risks_seeded'").fetchone() is None:
             initial=[
                 ('車體結構與配重','評估降低總高度、上層平台與舵機承載能力。','量測重心、車體穩定性與機構負載。','待評估'),
                 ('單臂或雙臂','需明確定義第二隻手臂的用途。','與單臂流程比較，確認雙臂必要性。','待評估'),
@@ -128,6 +128,7 @@ def init():
             for title,description,solution,status in initial:
                 c.execute('INSERT INTO project_risks(id,title,description,solution,status,updated) VALUES(?,?,?,?,?,?)',
                   (uuid.uuid4().hex,title,description,solution,status,datetime.now(timezone.utc).isoformat()))
+            c.execute("INSERT INTO meta(k,v) VALUES('project_risks_seeded','1')")
         c.execute("""CREATE TABLE IF NOT EXISTS purchase_receipts(
           id TEXT PRIMARY KEY, purchase_id TEXT NOT NULL, original_name TEXT NOT NULL,
           stored_name TEXT NOT NULL, mime TEXT NOT NULL, size INTEGER NOT NULL,
@@ -443,6 +444,35 @@ class H(BaseHTTPRequestHandler):
 
     def do_POST(self):
         p = self._path()
+        if p == '/api/admin/files/zip':
+            if self._deny():return
+            try:
+                ids=self._body().get('ids',[])
+                if not isinstance(ids,list) or not ids or len(ids)>50 or any(not re.fullmatch(r'[a-f0-9-]{8,64}',str(x)) for x in ids):
+                    return self._send(400,{'error':'請選擇 1–50 個有效檔案'})
+                buffer=io.BytesIO()
+                with LOCK,conn() as c,zipfile.ZipFile(buffer,'w',zipfile.ZIP_DEFLATED) as z:
+                    for n,ident in enumerate(dict.fromkeys(ids)):
+                        row=None;prefix=None
+                        for table,folder in [('attachments','uploads'),('purchase_images','purchases'),('purchase_receipts','receipts')]:
+                            row=c.execute('SELECT * FROM '+table+' WHERE id=?',(ident,)).fetchone()
+                            if row:prefix=folder;break
+                        if not row:continue
+                        if row['storage']=='bucket':data,_=s3_request('GET',prefix+'/'+row['stored_name'])
+                        else:
+                            with open(os.path.join(UPLOAD_DIR,row['stored_name']),'rb') as f:data=f.read()
+                        name=os.path.basename(row['original_name']).replace('\\','_').replace('/','_')
+                        z.writestr(str(n+1).zfill(2)+'_'+name,data)
+                data=buffer.getvalue()
+                self.send_response(200)
+                self.send_header('Content-Type','application/zip')
+                self.send_header('Content-Disposition','attachment; filename="XLeRobot_files.zip"')
+                self.send_header('Content-Length',str(len(data)))
+                self.send_header('Cache-Control','no-store')
+                self.end_headers();self.wfile.write(data);return
+            except Exception as e:
+                print('zip download failed:',repr(e),flush=True)
+                return self._send(502,{'error':'檔案打包失敗，請檢查附件儲存空間'})
         if p == '/api/project-risks':
             if self._deny(): return
             try:
