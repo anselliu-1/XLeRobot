@@ -112,6 +112,22 @@ def init():
         for col, ddl in (("stock", "TEXT DEFAULT '尚未確認'"), ("actual_price", "REAL DEFAULT 0"), ("refund", "TEXT DEFAULT '未開始'")):
             if col not in {r[1] for r in c.execute('PRAGMA table_info(purchases)')}:
                 c.execute(f'ALTER TABLE purchases ADD COLUMN {col} {ddl}')
+        c.execute("""CREATE TABLE IF NOT EXISTS project_risks(
+          id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT DEFAULT '',
+          solution TEXT DEFAULT '', status TEXT DEFAULT '待評估',
+          updated TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1)""")
+        if c.execute('SELECT COUNT(*) FROM project_risks').fetchone()[0] == 0:
+            initial=[
+                ('車體結構與配重','評估降低總高度、上層平台與舵機承載能力。','量測重心、車體穩定性與機構負載。','待評估'),
+                ('單臂或雙臂','需明確定義第二隻手臂的用途。','與單臂流程比較，確認雙臂必要性。','待評估'),
+                ('視覺辨識與夾取','辨識、座標轉換與夾取的穩定性待驗證。','量測辨識率、定位誤差與夾取成功率。','待驗證'),
+                ('展示動線','展示配置圖與操作流程尚待確認。','準備到場校正、分段展示及備援影片。','規劃中'),
+                ('雙臂電瓶供電','需比較共用／獨立電瓶、峰值電流、壓降與續航。','量測雙臂同動電流，確認極性、線徑及分路保護。','待評估'),
+                ('AGV 停靠與座標校正','停靠偏差會影響手臂夾取。','測試到站誤差、相機與手臂座標轉換及重試流程。','待驗證'),
+                ('整合控制與異常處理','底盤、雙臂與相機的完整流程仍待整合。','設計任務狀態、逾時、急停與人工接管。','規劃中')]
+            for title,description,solution,status in initial:
+                c.execute('INSERT INTO project_risks(id,title,description,solution,status,updated) VALUES(?,?,?,?,?,?)',
+                  (uuid.uuid4().hex,title,description,solution,status,datetime.now(timezone.utc).isoformat()))
         c.execute("""CREATE TABLE IF NOT EXISTS purchase_receipts(
           id TEXT PRIMARY KEY, purchase_id TEXT NOT NULL, original_name TEXT NOT NULL,
           stored_name TEXT NOT NULL, mime TEXT NOT NULL, size INTEGER NOT NULL,
@@ -312,6 +328,9 @@ class H(BaseHTTPRequestHandler):
             })
         
         if p == "/api/auth": return self._send(200 if is_admin(self) else 403, {"admin": is_admin(self)})
+        if p == '/api/project-risks':
+            with LOCK,conn() as c:
+                return self._send(200,{'items':[dict(x) for x in c.execute('SELECT * FROM project_risks ORDER BY rowid')]})
         if p == '/api/admin/files':
             if self._deny(): return
             with LOCK, conn() as c:
@@ -424,6 +443,20 @@ class H(BaseHTTPRequestHandler):
 
     def do_POST(self):
         p = self._path()
+        if p == '/api/project-risks':
+            if self._deny(): return
+            try:
+                d=self._body()
+                title=str(d.get('title','')).strip()[:160]
+                status=str(d.get('status','待評估'))
+                if not title or status not in ('待評估','規劃中','進行中','待驗證','已完成','暫緩'):raise ValueError()
+                with LOCK,conn() as c:
+                    ident=uuid.uuid4().hex
+                    c.execute('INSERT INTO project_risks(id,title,description,solution,status,updated) VALUES(?,?,?,?,?,?)',
+                      (ident,title,str(d.get('description',''))[:4000],str(d.get('solution',''))[:4000],status,datetime.now(timezone.utc).isoformat()))
+                    return self._send(200,{'id':ident})
+            except (ValueError,TypeError):return self._send(400,{'error':'invalid risk data'})
+
         if p == '/api/purchases/permissions':
             if self._deny(): return
             try:
@@ -577,6 +610,22 @@ class H(BaseHTTPRequestHandler):
 
     def do_PATCH(self):
         p = self._path()
+        rm=re.fullmatch(r'/api/project-risks/([a-f0-9]+)',p)
+        if rm:
+            if self._deny():return
+            try:
+                d=self._body()
+                title=str(d.get('title','')).strip()[:160]
+                status=str(d.get('status','待評估'))
+                revision=int(d.get('revision',0))
+                if not title or status not in ('待評估','規劃中','進行中','待驗證','已完成','暫緩'):raise ValueError()
+                with LOCK,conn() as c:
+                    result=c.execute('UPDATE project_risks SET title=?,description=?,solution=?,status=?,updated=?,revision=revision+1 WHERE id=? AND revision=?',
+                      (title,str(d.get('description',''))[:4000],str(d.get('solution',''))[:4000],status,datetime.now(timezone.utc).isoformat(),rm.group(1),revision))
+                    if result.rowcount==0:return self._send(409,{'error':'資料已被其他管理員修改，請重新整理'})
+                    return self._send(200,{'ok':True})
+            except (ValueError,TypeError):return self._send(400,{'error':'invalid risk data'})
+
         pm=re.fullmatch(r'/api/purchases/([a-f0-9]+)',p)
         if pm:
             try:
@@ -628,6 +677,12 @@ class H(BaseHTTPRequestHandler):
     def do_DELETE(self):
         if self._deny(): return
         p = self._path()
+        rm=re.fullmatch(r'/api/project-risks/([a-f0-9]+)',p)
+        if rm:
+            with LOCK,conn() as c:
+                c.execute('DELETE FROM project_risks WHERE id=?',(rm.group(1),))
+                return self._send(200,{'ok':True})
+
         receipt=re.fullmatch(r'/api/purchase-receipts/([a-f0-9]+)',p)
         if receipt:
             with LOCK, conn() as c:
