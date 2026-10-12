@@ -298,8 +298,10 @@ def mail_worker():
                 )[:1800]
 
                 message += (
-                    "\n\n網站："
-                    "https://xlerobot-test-staging.up.railway.app"
+                    "\n\n網站：https://" + os.environ.get(
+                        "RAILWAY_PUBLIC_DOMAIN",
+                        "xlerobot-production.up.railway.app"
+                    ).strip().removeprefix("https://").removeprefix("http://").rstrip("/") + "/"
                 )
 
                 payload = json.dumps(
