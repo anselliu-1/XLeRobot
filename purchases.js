@@ -23,9 +23,25 @@
       <div class="bar"><button class="btn ghost" data-edit="${p.id}">編輯</button><label class="btn ghost" style="cursor:pointer">上傳商品圖片 <input type="file" accept="image/jpeg,image/png,image/webp" data-upload="${p.id}" multiple hidden></label>${admin?`<button class="btn ghost" data-del="${p.id}">刪除項目</button>`:''}</div>
     </article>`).join(''):'<p class="muted">尚無採購項目，可由組員新增。</p>';
   }
-  async function load(){try{const d=await req('/api/purchases');purchases=d.purchases;perms=d.permissions||perms;render();msg('');}catch(e){msg('採購清單讀取失敗：'+e.message)}}
+  let loadBusy=false, lastSnapshot='', deferredRender=false;
+  function editingPurchase(){return !$('#buyForm').hidden || !!$('#buyItems').querySelector('select:focus, input:focus, textarea:focus');}
+  async function load(force=false){
+    if(loadBusy)return;
+    loadBusy=true;
+    try{
+      const d=await req('/api/purchases'), snapshot=JSON.stringify([d.purchases,d.permissions]);
+      purchases=d.purchases;perms=d.permissions||perms;
+      if(force || snapshot!==lastSnapshot || deferredRender){
+        if(!force && editingPurchase()){deferredRender=true;}
+        else{render();deferredRender=false;}
+        lastSnapshot=snapshot;
+      }
+      msg('');
+    }catch(e){msg('採購清單同步失敗：'+e.message)}
+    finally{loadBusy=false;}
+  }
   function form(p){editId=p?.id||null;const f=$('#buyForm');f.hidden=false;$('#buyFormTitle').textContent=p?'編輯採購項目':'新增採購項目';f.reset();$('#buyOwnerField').hidden=!admin;for(const k of ['name','spec','qty','price','status','owner','url','note','stock','actual_price'])if(p&&f.elements[k]&&p[k]!=null)f.elements[k].value=p[k];f.scrollIntoView({behavior:'smooth',block:'nearest'});}
-  $('#buyNew').onclick=()=>form();$('#buyCancel').onclick=()=>$('#buyForm').hidden=true;
+  $('#buyNew').onclick=()=>form();$('#buyCancel').onclick=()=>{$('#buyForm').hidden=true;load(true);};
   $('#buyForm').onsubmit=async e=>{e.preventDefault();const f=e.currentTarget,d=Object.fromEntries(new FormData(f).entries());if(!admin)delete d.owner;try{await req(editId?'/api/purchases/'+editId:'/api/purchases',editId?'PATCH':'POST',d);f.hidden=true;await load();}catch(e){alert('儲存失敗：'+e.message)}};
   async function uploadFiles(input,kind){const files=[...input.files];if(!files.length)return;const limit=kind==='receipts'?20:10;for(const file of files){if(file.size>limit*1024*1024){alert(file.name+' 超過 '+limit+' MB');continue;}if(!confirm('確定上傳「'+file.name+'」嗎？'))continue;try{const path='/api/purchases/'+(kind==='receipts'?input.dataset.receipt:input.dataset.upload)+'/'+kind;const r=await fetch(API+path,{method:'POST',headers:{...headers(),'Content-Type':file.type,'X-File-Name':encodeURIComponent(file.name)},body:file});const d=await r.json();if(!r.ok)throw Error(d.error||'上傳失敗');}catch(e){alert('上傳失敗：'+e.message)}}input.value='';await load();}
   $('#buyItems').addEventListener('change',async e=>{const f=e.target;if(f.matches('[data-upload]'))return uploadFiles(f,'images');if(f.matches('[data-receipt]')&&admin)return uploadFiles(f,'receipts');});
@@ -45,6 +61,10 @@
   $('#refundView').onchange=()=>{if(!$('#refundView').checked)$('#refundEdit').checked=false;$('#refundEdit').disabled=!$('#refundView').checked;};
   $('#purchasePermSave').onclick=async()=>{try{perms=await req('/api/purchases/permissions','POST',{refund_view:$('#refundView').checked,refund_edit:$('#refundEdit').checked});$('#purchasePermMsg').textContent='權限已儲存';await load();}catch(e){$('#purchasePermMsg').textContent='儲存失敗：'+e.message}};
   $('#notifySave').onclick=async()=>{try{await req('/api/notifications/config','POST',{enabled:$('#notifyEnabled').checked,mode:$('#notifyMode').value,events:[...$('#notifyEvents').querySelectorAll('input:checked')].map(i=>i.value)});$('#notifyMsg').textContent='設定已儲存';}catch(e){$('#notifyMsg').textContent='儲存失敗：'+e.message}};
-  async function checkAdmin(){let next=false;try{next=!!key()&&(await fetch(API+'/api/auth',{headers:headers()})).ok;}catch{}const changed=next!==admin;admin=next;$('#notifyPanel').hidden=!admin;$('#purchasePermissionsPanel').hidden=!admin;$('#buyOwnerField').hidden=!admin;if(changed)await load();if(admin){try{const c=await req('/api/notifications/config');$('#notifyEnabled').checked=c.enabled;$('#notifyMode').value=c.mode;$('#notifyEvents').querySelectorAll('input').forEach(i=>i.checked=c.events.includes(i.value));const p=await req('/api/purchases/permissions');$('#refundView').checked=p.refund_view;$('#refundEdit').checked=p.refund_edit;$('#refundEdit').disabled=!p.refund_view;}catch{}}}
-  load().then(checkAdmin);setInterval(()=>{if(!document.hidden){load();checkAdmin();}},30000);
+  async function checkAdmin(){let next=false;try{next=!!key()&&(await fetch(API+'/api/auth',{headers:headers()})).ok;}catch{}const changed=next!==admin;admin=next;$('#notifyPanel').hidden=!admin;$('#purchasePermissionsPanel').hidden=!admin;$('#buyOwnerField').hidden=!admin;if(changed){await load(true);window.dispatchEvent(new CustomEvent('xle-admin-change',{detail:{admin}}));}if(admin){try{const c=await req('/api/notifications/config');$('#notifyEnabled').checked=c.enabled;$('#notifyMode').value=c.mode;$('#notifyEvents').querySelectorAll('input').forEach(i=>i.checked=c.events.includes(i.value));const p=await req('/api/purchases/permissions');$('#refundView').checked=p.refund_view;$('#refundEdit').checked=p.refund_edit;$('#refundEdit').disabled=!p.refund_view;}catch{}}}
+  load(true).then(checkAdmin);
+  setInterval(()=>{if(!document.hidden)load();},3000);
+  setInterval(()=>{if(!document.hidden)checkAdmin();},30000);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden){load();checkAdmin();}});
+  $('#buyItems').addEventListener('focusout',()=>setTimeout(()=>{if(deferredRender&&!editingPurchase())load(true);},0));
 })();
