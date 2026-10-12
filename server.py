@@ -3,6 +3,8 @@ import json, os, sqlite3, threading, time, uuid, re, mimetypes, urllib.request, 
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from datetime import datetime, timezone, timedelta
 import hashlib, hmac
+import smtplib, ssl
+from email.message import EmailMessage
 
 DB = os.environ.get("TASK_DB", os.path.join(os.path.dirname(os.path.abspath(__file__)), "data.db"))
 PORT = int(os.environ.get("PORT", "8000"))
@@ -58,7 +60,7 @@ def s3_request(method, key, data=None, content_type="application/octet-stream"):
     with urllib.request.urlopen(req, timeout=60) as resp:
         return resp.read(), resp.headers
 
-APP_VERSION = os.environ.get("APP_VERSION", "v1.2.0")
+APP_VERSION = os.environ.get("APP_VERSION", "v1.3.0")
 DEPLOY_TIME = datetime.now(TZ)
 DEPLOY_TIME_TEXT = DEPLOY_TIME.strftime("%Y 年 %m 月 %d 日 %H:%M（UTC+8）")
 
@@ -103,6 +105,31 @@ def init():
         acols = {r[1] for r in c.execute("PRAGMA table_info(attachments)")}
         if "storage" not in acols:
             c.execute("ALTER TABLE attachments ADD COLUMN storage TEXT DEFAULT 'local'")
+        c.execute("""CREATE TABLE IF NOT EXISTS purchases(
+          id TEXT PRIMARY KEY, name TEXT NOT NULL, spec TEXT DEFAULT '', qty INTEGER DEFAULT 1,
+          price REAL DEFAULT 0, status TEXT DEFAULT '待確認', owner TEXT DEFAULT '',
+          url TEXT DEFAULT '', note TEXT DEFAULT '', updated TEXT DEFAULT '')""")
+        for col, ddl in (("stock", "TEXT DEFAULT '尚未確認'"), ("actual_price", "REAL DEFAULT 0"), ("refund", "TEXT DEFAULT '未開始'")):
+            if col not in {r[1] for r in c.execute('PRAGMA table_info(purchases)')}:
+                c.execute(f'ALTER TABLE purchases ADD COLUMN {col} {ddl}')
+        c.execute("""CREATE TABLE IF NOT EXISTS purchase_receipts(
+          id TEXT PRIMARY KEY, purchase_id TEXT NOT NULL, original_name TEXT NOT NULL,
+          stored_name TEXT NOT NULL, mime TEXT NOT NULL, size INTEGER NOT NULL,
+          storage TEXT NOT NULL, created TEXT NOT NULL)""")
+        if c.execute("SELECT v FROM meta WHERE k='purchase_permissions'").fetchone() is None:
+            c.execute("INSERT INTO meta(k,v) VALUES('purchase_permissions',?)", (json.dumps({'refund_view':False,'refund_edit':False}),))
+        c.execute("""CREATE TABLE IF NOT EXISTS purchase_images(
+          id TEXT PRIMARY KEY, purchase_id TEXT NOT NULL, original_name TEXT NOT NULL,
+          stored_name TEXT NOT NULL, mime TEXT NOT NULL, size INTEGER NOT NULL,
+          storage TEXT NOT NULL, created TEXT NOT NULL)""")
+        c.execute("""CREATE TABLE IF NOT EXISTS notify_queue(
+          id TEXT PRIMARY KEY, event TEXT NOT NULL, subject TEXT NOT NULL,
+          detail TEXT NOT NULL, created REAL NOT NULL, sent INTEGER DEFAULT 0,
+          error TEXT DEFAULT '')""")
+        if c.execute("SELECT v FROM meta WHERE k='notify_config'").fetchone() is None:
+            c.execute("INSERT INTO meta(k,v) VALUES('notify_config',?)", (json.dumps({
+              'enabled': False, 'mode':'instant', 'events':[
+                'task_add','task_done','task_upload','buy_add','buy_status','buy_image']}),))
         if c.execute("SELECT v FROM meta WHERE k='seeded'").fetchone() is None:
             seed(c)
             c.execute("INSERT OR REPLACE INTO meta VALUES('seeded','1')")
@@ -172,6 +199,80 @@ def today():
 def now_s():
     return datetime.now(TZ).strftime("%Y-%m-%d %H:%M")
 
+NOTIFY_EVENTS = {'task_add','task_edit','task_done','task_reopen','task_result','task_upload','task_delete',
+                 'buy_add','buy_edit','buy_status','buy_image','buy_delete','buy_stock','buy_owner','buy_refund'}
+IMAGE_EXT = {'.jpg','.jpeg','.png','.webp'}
+IMAGE_MAX = 10 * 1024 * 1024
+
+def notify_config(c):
+    row = c.execute("SELECT v FROM meta WHERE k='notify_config'").fetchone()
+    try: return json.loads(row[0]) if row else {'enabled':False,'mode':'instant','events':[]}
+    except (ValueError, TypeError): return {'enabled':False,'mode':'instant','events':[]}
+
+def queue_notify(c, event, subject, detail):
+    conf = notify_config(c)
+    if conf.get('enabled') and event in conf.get('events', []):
+        c.execute('INSERT INTO notify_queue(id,event,subject,detail,created) VALUES(?,?,?,?,?)',
+                  (uuid.uuid4().hex, event, subject[:200], detail[:1500], time.time()))
+
+def mail_worker():
+    while True:
+        try:
+            with LOCK, conn() as c:
+                cfg=notify_config(c)
+                wait=600 if cfg.get('mode')=='digest' else 0
+                items=c.execute('SELECT * FROM notify_queue WHERE sent=0 AND created<=? ORDER BY created LIMIT 60', (time.time()-wait,)).fetchall()
+                items=[dict(x) for x in items]
+            if items and os.environ.get('SMTP_USER') and os.environ.get('SMTP_APP_PASSWORD') and os.environ.get('NOTIFY_EMAIL'):
+                msg=EmailMessage()
+                msg['From']=os.environ['SMTP_USER']; msg['To']=os.environ['NOTIFY_EMAIL']
+                msg['Subject']='XLeRobot｜' + (items[0]['subject'] if len(items)==1 else f'{len(items)} 項網站更新摘要')
+                msg.set_content('\n\n'.join(f"{x['subject']}\n{x['detail']}" for x in items) +
+                                '\n\n網站：https://xlerobot-production.up.railway.app')
+                with smtplib.SMTP_SSL(os.environ.get('SMTP_HOST','smtp.gmail.com'), int(os.environ.get('SMTP_PORT','465')), context=ssl.create_default_context(), timeout=20) as smtp:
+                    smtp.login(os.environ['SMTP_USER'],os.environ['SMTP_APP_PASSWORD'])
+                    smtp.send_message(msg)
+                with LOCK, conn() as c:
+                    c.executemany("UPDATE notify_queue SET sent=1,error='' WHERE id=?",[(x['id'],) for x in items])
+        except Exception as exc:
+            print('email notification failed:',repr(exc),flush=True)
+        time.sleep(20)
+
+def purchase_permissions(c):
+    row=c.execute("SELECT v FROM meta WHERE k='purchase_permissions'").fetchone()
+    try: return json.loads(row[0]) if row else {'refund_view':False,'refund_edit':False}
+    except (ValueError, TypeError): return {'refund_view':False,'refund_edit':False}
+
+def purchase_rows(c, admin=False):
+    result=[dict(r) for r in c.execute('SELECT * FROM purchases ORDER BY updated DESC')]
+    images=[dict(r) for r in c.execute('SELECT id,purchase_id,original_name,mime,size FROM purchase_images ORDER BY created')]
+    perms=purchase_permissions(c)
+    for r in result:
+        if not admin and not perms.get('refund_view'): r.pop('refund',None)
+        r['images']=[dict(i, url='/api/purchase-images/'+i['id']) for i in images if i['purchase_id']==r['id']]
+    if admin:
+        receipts=[dict(x) for x in c.execute('SELECT id,purchase_id,original_name,mime,size FROM purchase_receipts ORDER BY created')]
+        for r in result:r['receipts']=[dict(x,url='/api/purchase-receipts/'+x['id']) for x in receipts if x['purchase_id']==r['id']]
+    return result
+
+def clean_purchase(d):
+    if not isinstance(d,dict): raise ValueError('invalid payload')
+    name=str(d.get('name','')).strip()[:160]
+    if not name: raise ValueError('name required')
+    qty=int(d.get('qty',1)); price=float(d.get('price',0))
+    if not 1<=qty<=100000 or not 0<=price<=100000000: raise ValueError('invalid amount')
+    status=str(d.get('status','待確認'))
+    if status not in ('待確認','待評估','待採購','已購買','已到貨','不需採購'): raise ValueError('invalid status')
+    url=str(d.get('url','')).strip()[:600]
+    if url and not url.startswith(('https://','http://')): raise ValueError('invalid url')
+    stock=str(d.get('stock','尚未確認'))
+    if stock not in ('尚未確認','有','沒有'): raise ValueError('invalid stock')
+    actual=float(d.get('actual_price') or 0)
+    if not 0<=actual<=100000000: raise ValueError('invalid actual price')
+    return {'name':name,'spec':str(d.get('spec',''))[:1000],'qty':qty,'price':price,
+            'status':status,'url':url,'note':str(d.get('note',''))[:1000],
+            'stock':stock,'actual_price':actual,'updated':now_s()}
+
 class H(BaseHTTPRequestHandler):
     server_version = "xle/1"
     def log_message(self, *a): pass
@@ -211,6 +312,39 @@ class H(BaseHTTPRequestHandler):
             })
         
         if p == "/api/auth": return self._send(200 if is_admin(self) else 403, {"admin": is_admin(self)})
+        if p == '/api/purchases':
+            with LOCK, conn() as c: return self._send(200, {'purchases':purchase_rows(c,is_admin(self)),'permissions':purchase_permissions(c) if is_admin(self) else {'refund_view':purchase_permissions(c)['refund_view'],'refund_edit':purchase_permissions(c)['refund_edit']}})
+        if p == '/api/purchases/permissions':
+            if self._deny(): return
+            with LOCK, conn() as c: return self._send(200,purchase_permissions(c))
+        if p == '/api/notifications/config':
+            if self._deny(): return
+            with LOCK, conn() as c: return self._send(200,notify_config(c))
+        mreceipt=re.fullmatch(r'/api/purchase-receipts/([a-f0-9]+)',p)
+        if mreceipt:
+            if self._deny(): return
+            with LOCK, conn() as c: a=c.execute('SELECT * FROM purchase_receipts WHERE id=?',(mreceipt.group(1),)).fetchone()
+            if not a: return self._send(404,{'error':'not found'})
+            try:
+                if a['storage']=='bucket': b,_=s3_request('GET','receipts/'+a['stored_name'])
+                else:
+                    with open(os.path.join(UPLOAD_DIR,a['stored_name']),'rb') as f:b=f.read()
+            except Exception:return self._send(502,{'error':'storage unavailable'})
+            self.send_response(200); self.send_header('Content-Type',a['mime']);self.send_header('Content-Length',str(len(b)))
+            self.send_header('Content-Disposition',"inline; filename*=UTF-8''"+urllib.parse.quote(a['original_name']))
+            self.send_header('X-Content-Type-Options','nosniff');self.send_header('Cache-Control','no-store');self.end_headers();self.wfile.write(b);return
+        mimg=re.fullmatch(r'/api/purchase-images/([a-f0-9]+)',p)
+        if mimg:
+            with LOCK, conn() as c:
+                a=c.execute('SELECT * FROM purchase_images WHERE id=?',(mimg.group(1),)).fetchone()
+            if not a: return self._send(404,{'error':'not found'})
+            try:
+                if a['storage']=='bucket': b,_=s3_request('GET','purchases/'+a['stored_name'])
+                else:
+                    with open(os.path.join(UPLOAD_DIR,a['stored_name']),'rb') as f: b=f.read()
+            except Exception: return self._send(502,{'error':'storage unavailable'})
+            self.send_response(200); self.send_header('Content-Type',a['mime']); self.send_header('Content-Length',str(len(b)))
+            self.send_header('X-Content-Type-Options','nosniff'); self.end_headers(); self.wfile.write(b); return
         if p == "/api/tasks":
             q = self.path.split("?", 1)[1] if "?" in self.path else ""
             since = dict(x.split("=", 1) for x in q.split("&") if "=" in x).get("since")
@@ -272,6 +406,87 @@ class H(BaseHTTPRequestHandler):
 
     def do_POST(self):
         p = self._path()
+        if p == '/api/purchases/permissions':
+            if self._deny(): return
+            try:
+                d=self._body(); cfg={'refund_view':d['refund_view'],'refund_edit':d['refund_edit']}
+                if any(type(v) is not bool for v in cfg.values()) or (cfg['refund_edit'] and not cfg['refund_view']):raise ValueError()
+            except Exception:return self._send(400,{'error':'invalid permissions'})
+            with LOCK, conn() as c:c.execute("INSERT OR REPLACE INTO meta(k,v) VALUES('purchase_permissions',?)",(json.dumps(cfg),))
+            return self._send(200,cfg)
+        if p == '/api/notifications/config':
+            if self._deny(): return
+            try:
+                d=self._body(); cfg={'enabled':bool(d['enabled']), 'mode':d['mode'], 'events':d['events']}
+                if cfg['mode'] not in ('instant','digest') or not isinstance(cfg['events'],list) or any(x not in NOTIFY_EVENTS for x in cfg['events']): raise ValueError()
+            except Exception: return self._send(400,{'error':'invalid settings'})
+            with LOCK, conn() as c: c.execute("INSERT OR REPLACE INTO meta(k,v) VALUES('notify_config',?)",(json.dumps(cfg),))
+            return self._send(200,cfg)
+        if p == '/api/purchases':
+            try:
+                raw=self._body();d=clean_purchase(raw)
+                if 'owner' in raw and raw['owner'] and not is_admin(self):return self._send(403,{'error':'owner only'})
+                owner=str(raw.get('owner',''))[:100] if is_admin(self) else ''
+            except Exception as e: return self._send(400,{'error':str(e)})
+            pid=uuid.uuid4().hex[:16]
+            with LOCK, conn() as c:
+                c.execute('INSERT INTO purchases(id,name,spec,qty,price,status,url,note,stock,actual_price,updated) VALUES(?,?,?,?,?,?,?,?,?,?,?)',(pid,d['name'],d['spec'],d['qty'],d['price'],d['status'],d['url'],d['note'],d['stock'],d['actual_price'],d['updated']))
+                if owner:c.execute('UPDATE purchases SET owner=? WHERE id=?',(owner,pid))
+                queue_notify(c,'buy_add','新增採購項目',d['name'])
+                return self._send(200,{'purchases':purchase_rows(c,is_admin(self))})
+        receipt=re.fullmatch(r'/api/purchases/([a-f0-9]+)/receipts',p)
+        if receipt:
+            if self._deny():return
+            n=int(self.headers.get('Content-Length') or 0)
+            if not 0<n<=20*1024*1024:return self._send(413,{'error':'單檔上限 20 MB'})
+            name=os.path.basename(urllib.parse.unquote(self.headers.get('X-File-Name','receipt.pdf')).replace('\\','/'))[:160]
+            ext=os.path.splitext(name)[1].lower()
+            if ext not in IMAGE_EXT|{'.pdf'}:return self._send(415,{'error':'只接受圖片或 PDF'})
+            with LOCK, conn() as c:
+                item=c.execute('SELECT name FROM purchases WHERE id=?',(receipt.group(1),)).fetchone()
+                if not item:return self._send(404,{'error':'item not found'})
+            b=self.rfile.read(n)
+            signatures={'.jpg':b.startswith(b'\xff\xd8\xff'),'.jpeg':b.startswith(b'\xff\xd8\xff'),'.png':b.startswith(b'\x89PNG\r\n\x1a\n'),'.webp':b.startswith(b'RIFF') and b[8:12]==b'WEBP','.pdf':b.startswith(b'%PDF-')}
+            if not signatures[ext]:return self._send(415,{'error':'檔案格式不符'})
+            aid=uuid.uuid4().hex;stored=aid[:10]+'_'+name;mime=mimetypes.guess_type(name)[0] or 'application/octet-stream'
+            storage='bucket' if S3_ENABLED else 'local'
+            try:
+                if storage=='bucket':s3_request('PUT','receipts/'+stored,b,mime)
+                else:
+                    with open(os.path.join(UPLOAD_DIR,stored),'wb') as f:f.write(b)
+            except Exception as e:
+                print('receipt upload failed:',repr(e),flush=True)
+                return self._send(502,{'error':'storage unavailable'})
+            with LOCK, conn() as c:
+                c.execute('INSERT INTO purchase_receipts VALUES(?,?,?,?,?,?,?,?)',(aid,receipt.group(1),name,stored,mime,n,storage,now_s()))
+                return self._send(200,{'purchases':purchase_rows(c,True)})
+        im=re.fullmatch(r'/api/purchases/([a-f0-9]+)/images',p)
+        if im:
+            n=int(self.headers.get('Content-Length') or 0)
+            if not 0<n<=IMAGE_MAX: return self._send(413,{'error':'圖片不得超過 10 MB'})
+            name=urllib.parse.unquote(self.headers.get('X-File-Name','image.jpg'))
+            name=os.path.basename(name.replace('\\','/'))[:160]
+            ext=os.path.splitext(name)[1].lower()
+            if ext not in IMAGE_EXT: return self._send(415,{'error':'僅支援 JPG、PNG、WebP'})
+            with LOCK, conn() as c:
+                item=c.execute('SELECT name FROM purchases WHERE id=?',(im.group(1),)).fetchone()
+                if not item: return self._send(404,{'error':'item not found'})
+            b=self.rfile.read(n)
+            signatures={'.jpg':b.startswith(b'\xff\xd8\xff'),'.jpeg':b.startswith(b'\xff\xd8\xff'),'.png':b.startswith(b'\x89PNG\r\n\x1a\n'),'.webp':b.startswith(b'RIFF') and b[8:12]==b'WEBP'}
+            if not signatures[ext]: return self._send(415,{'error':'圖片格式不符'})
+            aid=uuid.uuid4().hex; stored=aid[:10]+'_'+name; mime=mimetypes.guess_type(name)[0] or 'image/jpeg'
+            storage='bucket' if S3_ENABLED else 'local'
+            try:
+                if storage=='bucket': s3_request('PUT','purchases/'+stored,b,mime)
+                else:
+                    with open(os.path.join(UPLOAD_DIR,stored),'wb') as f:f.write(b)
+            except Exception as e:
+                print('purchase image upload failed:',repr(e),flush=True)
+                return self._send(502,{'error':'storage unavailable'})
+            with LOCK, conn() as c:
+                c.execute('INSERT INTO purchase_images VALUES(?,?,?,?,?,?,?,?)',(aid,im.group(1),name,stored,mime,n,storage,now_s()))
+                queue_notify(c,'buy_image','新增採購圖片',item['name']+'：'+name)
+                return self._send(200,{'purchases':purchase_rows(c,is_admin(self))})
         m = re.match(r"^/api/tasks/([\w-]+)/attachments$", p)
         if m:
             n = int(self.headers.get("Content-Length") or 0)
@@ -298,7 +513,7 @@ class H(BaseHTTPRequestHandler):
                 return self._send(502, {"error": "upload storage unavailable"})
             with LOCK, conn() as c:
                 c.execute("INSERT INTO attachments(id,task_id,original_name,stored_name,mime,size,created,storage) VALUES(?,?,?,?,?,?,?,?)", (aid,m.group(1),name,stored,mime,n,now_s(),storage))
-                r=bump(c); return self._send(200,{"rev":r,"tasks":rows(c,is_admin(self))})
+                queue_notify(c,"task_upload","新增成果附件",name); r=bump(c); return self._send(200,{"rev":r,"tasks":rows(c,is_admin(self))})
         if self._deny(): return
         try: d = self._body()
         except Exception: return self._send(400, {"error": "bad json"})
@@ -314,7 +529,7 @@ class H(BaseHTTPRequestHandler):
                 tid = uuid.uuid4().hex[:10]
                 c.execute("INSERT INTO tasks(id,n,task,who,due,done_date,pri,note,done,result,updated) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                           (tid, n, o["task"], o.get("who", ""), o.get("due", ""), o.get("done_date", ""), o.get("pri", "中"), o.get("note", ""), o.get("done", 0), o.get("result", ""), time.time()))
-                r = bump(c); return self._send(200, {"rev": r, "tasks": rows(c), "id": tid})
+                queue_notify(c,"task_add","新增分工任務",o["task"]); r = bump(c); return self._send(200, {"rev": r, "tasks": rows(c), "id": tid})
             if p == "/api/import":
                 arr = d.get("tasks") if isinstance(d, dict) else None
                 if not isinstance(arr, list): return self._send(400, {"error": "no tasks"})
@@ -332,8 +547,37 @@ class H(BaseHTTPRequestHandler):
                 seed(c); r = bump(c); return self._send(200, {"rev": r, "tasks": rows(c)})
         self._send(404, {"error": "not found"})
 
+    def _purchase_extra(self,d,old,admin,perms):
+        try: raw=self._purchase_raw
+        except AttributeError:return {'owner':old['owner'],'refund':old['refund']}
+        owner=str(raw.get('owner',old['owner']))[:100]
+        refund=str(raw.get('refund',old['refund']))
+        if refund not in ('未開始','待送件','審核中','已完成','不需報銷'):return None
+        if not admin and ('owner' in raw and owner!=old['owner']):return None
+        if not admin and ('refund' in raw and refund!=old['refund']) and not perms.get('refund_edit'):return None
+        return {'owner':owner if admin else old['owner'],'refund':refund if (admin or perms.get('refund_edit')) else old['refund']}
+
     def do_PATCH(self):
         p = self._path()
+        pm=re.fullmatch(r'/api/purchases/([a-f0-9]+)',p)
+        if pm:
+            try:
+                self._purchase_raw=self._body();d=clean_purchase(self._purchase_raw)
+            except Exception as e:return self._send(400,{'error':str(e)})
+            with LOCK, conn() as c:
+                old=c.execute('SELECT * FROM purchases WHERE id=?',(pm.group(1),)).fetchone()
+                if not old: return self._send(404,{'error':'not found'})
+                admin=is_admin(self); perms=purchase_permissions(c)
+                payload=self._purchase_extra(d,old,admin,perms)
+                if payload is None:return self._send(403,{'error':'admin only field'})
+                d.update(payload)
+                c.execute('UPDATE purchases SET '+','.join(k+'=?' for k in d)+' WHERE id=?',(*d.values(),pm.group(1)))
+                if old['status']!=d['status']: queue_notify(c,'buy_status','採購狀態更新',d['name']+'：'+old['status']+' → '+d['status'])
+                if old['stock']!=d['stock']:queue_notify(c,'buy_stock','庫存確認更新',d['name']+'：'+d['stock'])
+                if old['owner']!=d['owner']:queue_notify(c,'buy_owner','採購負責人更新',d['name']+'：'+(d['owner'] or '取消指派'))
+                if old['refund']!=d['refund']:queue_notify(c,'buy_refund','報銷狀態更新',d['name']+'：'+d['refund'])
+                if any(old[k]!=d[k] for k in ('name','spec','qty','price','url','note','actual_price')):queue_notify(c,'buy_edit','採購資料修改',d['name'])
+                return self._send(200,{'purchases':purchase_rows(c,is_admin(self))})
         m = re.match(r"^/api/tasks/([\w-]+)$", p)
         if not m: return self._send(404, {"error": "not found"})
         try: d = self._body()
@@ -353,11 +597,64 @@ class H(BaseHTTPRequestHandler):
             if o.get("member_done") == 0 and "member_done_at" not in o: o["member_done_at"] = ""
             sets = ",".join(f"{k}=?" for k in o) + ",updated=?"
             c.execute(f"UPDATE tasks SET {sets} WHERE id=?", (*o.values(), time.time(), m.group(1)))
+            if o.get('member_done') == 1 and not cur['member_done']:
+                queue_notify(c,'task_done','組員回報完成',cur['task'])
+            elif o.get('member_done') == 0 and cur['member_done']:
+                queue_notify(c,'task_reopen','取消完成回報',cur['task'])
+            elif 'result' in o and o['result']!=cur['result']:
+                queue_notify(c,'task_result','成果內容更新',cur['task'])
+            elif any(k in o and o[k]!=cur[k] for k in ('task','who','due','pri','note')):
+                queue_notify(c,'task_edit','分工內容更新',cur['task'])
             r = bump(c); return self._send(200, {"rev": r, "tasks": rows(c, admin)})
 
     def do_DELETE(self):
         if self._deny(): return
         p = self._path()
+        receipt=re.fullmatch(r'/api/purchase-receipts/([a-f0-9]+)',p)
+        if receipt:
+            with LOCK, conn() as c:
+                a=c.execute('SELECT * FROM purchase_receipts WHERE id=?',(receipt.group(1),)).fetchone()
+                if not a:return self._send(404,{'error':'not found'})
+                try:
+                    if a['storage']=='bucket':s3_request('DELETE','receipts/'+a['stored_name'])
+                    else:os.remove(os.path.join(UPLOAD_DIR,a['stored_name']))
+                except FileNotFoundError:pass
+                except Exception:return self._send(502,{'error':'storage unavailable'})
+                c.execute('DELETE FROM purchase_receipts WHERE id=?',(receipt.group(1),))
+                return self._send(200,{'purchases':purchase_rows(c,True)})
+        pi=re.fullmatch(r'/api/purchase-images/([a-f0-9]+)',p)
+        if pi:
+            with LOCK, conn() as c:
+                a=c.execute('SELECT * FROM purchase_images WHERE id=?',(pi.group(1),)).fetchone()
+                if not a: return self._send(404,{'error':'not found'})
+                try:
+                    if a['storage']=='bucket': s3_request('DELETE','purchases/'+a['stored_name'])
+                    else: os.remove(os.path.join(UPLOAD_DIR,a['stored_name']))
+                except FileNotFoundError: pass
+                except Exception: return self._send(502,{'error':'storage unavailable'})
+                c.execute('DELETE FROM purchase_images WHERE id=?',(pi.group(1),))
+                queue_notify(c,'buy_delete','刪除採購圖片',a['original_name'])
+                return self._send(200,{'purchases':purchase_rows(c,is_admin(self))})
+        pm=re.fullmatch(r'/api/purchases/([a-f0-9]+)',p)
+        if pm:
+            with LOCK, conn() as c:
+                a=c.execute('SELECT * FROM purchases WHERE id=?',(pm.group(1),)).fetchone()
+                if not a: return self._send(404,{'error':'not found'})
+                images=c.execute('SELECT * FROM purchase_images WHERE purchase_id=?',(pm.group(1),)).fetchall()
+                receipts=c.execute('SELECT * FROM purchase_receipts WHERE purchase_id=?',(pm.group(1),)).fetchall()
+                try:
+                    for img in list(images)+list(receipts):
+                        prefix='receipts/' if img in receipts else 'purchases/'
+                        if img['storage']=='bucket': s3_request('DELETE',prefix+img['stored_name'])
+                        else:
+                            try: os.remove(os.path.join(UPLOAD_DIR,img['stored_name']))
+                            except FileNotFoundError: pass
+                except Exception: return self._send(502,{'error':'storage unavailable'})
+                c.execute('DELETE FROM purchase_images WHERE purchase_id=?',(pm.group(1),))
+                c.execute('DELETE FROM purchase_receipts WHERE purchase_id=?',(pm.group(1),))
+                c.execute('DELETE FROM purchases WHERE id=?',(pm.group(1),))
+                queue_notify(c,'buy_delete','刪除採購項目',a['name'])
+                return self._send(200,{'purchases':purchase_rows(c,is_admin(self))})
         fm = re.match(r"^/api/attachments/([\w-]+)$", p)
         if fm:
             with LOCK, conn() as c:
@@ -371,15 +668,18 @@ class H(BaseHTTPRequestHandler):
                 except Exception as e:
                     print("attachment delete failed:", repr(e), flush=True)
                     return self._send(502,{"error":"file storage unavailable"})
-                c.execute("DELETE FROM attachments WHERE id=?",(fm.group(1),)); r=bump(c)
+                c.execute("DELETE FROM attachments WHERE id=?",(fm.group(1),)); queue_notify(c,"task_delete","刪除成果附件",a["stored_name"]); r=bump(c)
                 return self._send(200,{"rev":r,"tasks":rows(c,True)})
         m = re.match(r"^/api/tasks/([\w-]+)$", p)
         if not m: return self._send(404, {"error": "not found"})
         with LOCK, conn() as c:
+            old=c.execute("SELECT task FROM tasks WHERE id=?",(m.group(1),)).fetchone()
             c.execute("DELETE FROM tasks WHERE id=?", (m.group(1),))
+            if old: queue_notify(c,'task_delete','刪除分工任務',old['task'])
             r = bump(c); return self._send(200, {"rev": r, "tasks": rows(c)})
 
 if __name__ == "__main__":
     init()
     print(f"listening on {PORT}, db={DB}, attachment_storage={'bucket' if S3_ENABLED else 'local'}", flush=True)
+    threading.Thread(target=mail_worker, daemon=True).start()
     ThreadingHTTPServer(("0.0.0.0", PORT), H).serve_forever()

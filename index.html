@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>XLeRobot 專題可行性研究</title>
+<title>XLeRobot｜商品選取與自動交付專題</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
@@ -19,18 +19,19 @@
       <path d="M10 18V11l-4-4M22 18V11l4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
       <circle cx="16" cy="9" r="3" stroke="var(--accent)" stroke-width="2"/>
     </svg>
-    <div><strong>XLeRobot 可行性研究</strong><small>雙臂移動平台・專題檢視工具</small></div>
+    <div><strong>XLeRobot 專題管理</strong><small>商品選取與自動交付・研究紀錄</small></div>
   </div>
   <nav class="tabs" aria-label="主要分頁">
     <button data-view="overview" class="on">總覽</button>
     <button data-view="plan">分工&amp;時程</button>
+    <button data-view="purchases">採購清單</button>
     <button data-view="meet">討論重點</button>
     <button data-view="myhw">我的硬體</button>
     <button data-view="power">供電方案</button>
     <button data-view="risks">困難與展出</button>
     <button data-view="prof">教授問答</button>
     <button data-view="rules">歸還守則</button>
-    <button data-view="ideas">方向清單</button>
+
     <button data-view="pkg">專題安裝包</button>
     <button data-view="src">依據</button>
   </nav>
@@ -40,22 +41,25 @@
 </header>
 
 <main id="main">
-  <!-- 總覽 -->
+  <!-- 總覽：新方向優先，舊版內容收合 -->
   <section class="view on" id="overview">
-    <div class="hero">
-      <div>
-        <p class="eyebrow">最現實的判斷</p>
-        <h1>先把手臂當成「會移動的手與眼」，<br>不要當成工業手臂。</h1>
-        <p class="lead">XLeRobot 的長處是低負載、室內、可移動的觀察與輕物操作。在不改動學校設備的前提下，最穩的專題是：受控場景、固定工作站、先半自動再全自動，用數據證明它可靠。</p>
-      </div>
-      <div class="verdict">
-        <div><span>適合</span><b>輕物、巡檢、拍照、清點、紀錄</b></div>
-        <div><span>不適合</span><b>重物、地面撿拾、精密組裝、快速動作</b></div>
-        <div><span>運算</span><b>訓練與影像放筆電／雲端</b></div>
-        <div><span>時程</span><b>1–1.5 學期可完成半自動＋一項全自動</b></div>
-      </div>
-    </div>
-
+    <div class="hero"><div>
+      <p class="eyebrow">2026-10-12 會議確認的展示方向</p>
+      <h1>商品選取與自動交付系統</h1>
+      <p class="lead">規劃整合 XLe 車體、機械手臂、使用者介面與視覺辨識：到訪者選擇商品後，車體前往貨架，辨識並夾取指定商品，最後移動至交付區完成交付。</p>
+    </div><div class="verdict"><div><span>展示方向</span><b>商品選取 → 辨識取物 → 自動交付</b></div>
+    <div><span>配置</span><b>單臂／雙臂尚待評估</b></div><div><span>車體</span><b>高度、配重、舵機承載待確認</b></div>
+    <div><span>注意</span><b>規劃方向，不代表系統已完成</b></div></div></div>
+    <h2 class="sec">展示操作流程（規劃）</h2>
+    <div class="hwgrid"><article class="hw"><header><h3>① 選擇商品</h3></header><p>到訪者透過 UI 選擇商品。</p></article>
+    <article class="hw"><header><h3>② 前往貨架</h3></header><p>車體移動至指定貨架前。</p></article>
+    <article class="hw"><header><h3>③ 視覺辨識與夾取</h3></header><p>攝影機辨識目標，機械手臂取物。</p></article>
+    <article class="hw"><header><h3>④ 商品交付</h3></header><p>車體前往交付區，手臂交付商品。</p></article></div>
+    <h2 class="sec">近期工作</h2><div class="hwgrid">
+    <article class="hw"><header><h3>10/17 前｜展示配置示意圖</h3></header><p>標示展示現場物品分布與擺放方式。</p></article>
+    <article class="hw"><header><h3>10/17 前｜操作流程圖</h3></header><p>呈現選物、移動、辨識、夾取與交付。</p></article>
+    <article class="hw"><header><h3>待排程｜採購清單</h3></header><p>整理規格、價格與購買管道，負責人尚未指定。</p></article></div>
+    <details class="legacy"><summary>歷史規劃與舊版總覽（2026-10-05 以前）</summary><div class="legacy-body">
     <h2 class="sec">目前暫定研究方向</h2>
     <article class="plan dircard">
       <div class="meta"><span class="t">暫定方向</span><span>依 2026-10-05 專題討論</span></div>
@@ -76,16 +80,50 @@
 
     <h2 class="sec">硬體現實檢查</h2>
     <div class="specs" id="specs"></div>
+</div></details>
+  </section>
+
+  <!-- 採購清單 -->
+  <section class="view" id="purchases">
+    <h2 class="sec first">採購清單</h2><p class="muted">組員可新增、修改、上傳商品圖片；只有管理員能刪除。圖片上傳後需管理員才能刪除。</p>
+    <div class="hwgrid"><article class="hw"><header><h3>項目數</h3></header><p id="buyCount">—</p></article>
+    <article class="hw"><header><h3>預估總金額</h3></header><p id="buyTotal">—</p></article></div>
+    <div class="bar"><button class="btn" id="buyNew">新增採購項目</button><button class="btn ghost" id="buyCSV">匯出 CSV</button></div>
+    <p class="muted" id="buyMsg"></p><div id="buyItems" class="hwgrid"></div>
+    <form id="buyForm" class="plan" hidden><h3 id="buyFormTitle">新增採購項目</h3>
+    <div class="buy-form-grid"><label>品名（必填）<input name="name" required maxlength="160"></label>
+    <label>規格／型號<textarea name="spec" rows="2"></textarea></label>
+    <label>數量<input name="qty" type="number" min="1" value="1" required></label>
+    <label>預估單價（NT$）<input name="price" type="number" min="0" step="0.01" value="0" required></label>
+    <label>庫存確認<select name="stock"><option>尚未確認</option><option>有</option><option>沒有</option></select></label><label>採購狀態<select name="status"><option>待確認</option><option>待採購</option><option>已購買</option><option>已到貨</option><option>不需採購</option></select></label>
+    <label id="buyOwnerField" hidden>負責人（管理員選填）<input name="owner" maxlength="100" placeholder="未指派則留空"></label><label>實際金額（NT$）<input name="actual_price" type="number" min="0" step="0.01" value="0"></label><label>購買連結<input name="url" type="url" placeholder="https://"></label>
+    <label>備註<textarea name="note" rows="2"></textarea></label></div>
+    <div class="bar"><button class="btn" type="submit">儲存</button><button class="btn ghost" type="button" id="buyCancel">取消</button></div></form>
+    <details class="legacy" id="purchasePermissionsPanel" hidden><summary>管理員｜報銷權限設定</summary><div class="legacy-body">
+    <label><input type="checkbox" id="refundView"> 允許組員查看報銷狀態</label><p><label><input type="checkbox" id="refundEdit"> 允許組員修改報銷狀態（需先允許查看）</label></p>
+    <button class="btn" id="purchasePermSave">儲存權限設定</button><p class="muted" id="purchasePermMsg"></p></div></details>
+    <details class="legacy" id="notifyPanel" hidden><summary>管理員｜Email 通知設定</summary>
+    <div class="legacy-body"><p class="muted">需先在 Railway 設定 SMTP_USER、SMTP_APP_PASSWORD、NOTIFY_EMAIL 才能寄送；未設定時不會發信。</p>
+    <label><input type="checkbox" id="notifyEnabled"> 啟用 Email 通知</label>
+    <p><label>寄送方式 <select id="notifyMode"><option value="instant">即時通知</option><option value="digest">10 分鐘合併通知</option></select></label></p>
+    <div id="notifyEvents" class="buy-notify-grid"></div><button class="btn" id="notifySave">儲存通知設定</button><p id="notifyMsg" class="muted"></p></div></details>
   </section>
 
   <!-- 討論重點 -->
   <section class="view" id="meet">
-    <h2 class="sec first">專題討論重點（2026-10-05）</h2>
+    <h2 class="sec first">專題討論重點</h2>
+    <article class="plan"><div class="meta"><span class="t">最新會議</span><span>2026-10-12</span></div>
+    <h3>商品選取與自動交付展示方向</h3>
+    <p>規劃將機械手臂安裝於 XLe 車體，讓到訪者透過 UI 選擇商品。車體前往貨架後以攝影機辨識商品，由手臂夾取，再移動至交付區交付商品。</p>
+    <h4 class="sub">後續工作</h4><ul class="prot"><li>10/17 前完成展示配置示意圖（現場物品分布與擺放）。</li><li>10/17 前完成展示操作流程圖（選物、移動、辨識、夾取、交付）。</li><li>整理採購清單，包含規格、價格與購買管道；會議未指定期限。</li></ul>
+    <h4 class="sub">車體與手臂配置</h4><ul class="prot"><li>評估降低車體總高度，並於最上層設置平台，兼顧配重與舵機承載能力。</li><li>評估單臂配置；若使用雙臂，需先釐清第二隻手臂的功能。</li></ul>
+    <p class="muted">以上為 10/12 會議紀錄；配置與實作細節尚待確認。</p></article>
+    <details class="legacy"><summary>歷史討論紀錄｜2026-10-05</summary><div class="legacy-body">
     <p class="muted" id="mtSrc"></p>
     <div class="verdict-box warnbox" id="mtBattery"></div>
     <div class="hwgrid" id="mtSecs"></div>
     <h2 class="sec">決議與待辦</h2>
-    <div class="tbl" id="mtTodo"></div>
+    <div class="tbl" id="mtTodo"></div></div></details>
   </section>
 
   <!-- 我的硬體 -->
@@ -161,21 +199,33 @@
 
   <!-- 困難與展出 -->
   <section class="view" id="risks">
-    <h2 class="sec first">通用困難點</h2>
+    <h2 class="sec first">新方向：展示規劃與待評估事項</h2>
+    <div class="hwgrid"><article class="hw"><header><h3>車體結構與配重｜待評估</h3></header><p>評估降低總高度、上層平台與舵機承載能力。</p></article>
+    <article class="hw"><header><h3>單臂或雙臂｜待評估</h3></header><p>若保留雙臂，需明確定義第二隻手臂的功能。</p></article>
+    <article class="hw"><header><h3>視覺辨識與夾取｜待驗證</h3></header><p>需驗證商品辨識、定位與夾取的穩定性；並非已發生的故障。</p></article>
+    <article class="hw"><header><h3>展示動線｜規劃中</h3></header><p>完成展示配置圖與操作流程圖後再確認場地安排。</p></article></div>
+    <details class="legacy"><summary>歷史困難與展出規劃</summary><div class="legacy-body"><h2 class="sec">通用困難點（舊版）</h2>
     <p class="muted">不論選哪一題都會遇到。紅色代表若沒處理，專題很可能卡住。</p>
     <div class="hards" id="hards"></div>
     <h2 class="sec">展出時的疑慮與對策</h2>
-    <div class="expo" id="expo"></div>
+    <div class="expo" id="expo"></div></div></details>
   </section>
 
   <!-- 教授問答 -->
   <section class="view" id="prof">
+    <h2 class="sec first">新方向：教授可能提問</h2><p class="muted">以下是依 10/12 會議方向擬定的準備題，不代表教授實際提問。</p>
+    <div class="qa">
+    <details><summary>為什麼選擇商品選取與自動交付？</summary><p>展示可整合 UI、移動平台、視覺辨識及機械手臂，驗證跨系統協作；實際效能仍需測試。</p></details>
+    <details><summary>單臂還是雙臂？</summary><p>目前仍在評估。若採雙臂，必須定義第二隻手臂的具體用途。</p></details>
+    <details><summary>車體如何承載手臂？</summary><p>須評估總高度、重心、配重與舵機承載能力，並評估上層平台配置。</p></details>
+    <details><summary>如何完成辨識、夾取與交付？</summary><p>規劃先以展示配置圖和操作流程圖定義步驟，再逐項實測；目前不應宣稱整套流程已完成。</p></details>
+    </div><details class="legacy"><summary>歷史教授問答（舊方向）</summary><div class="legacy-body">
     <div class="bar">
       <div class="seg" id="profFilter" role="group" aria-label="問題類別"></div>
       <button class="btn ghost" id="revealAll">全部展開</button>
     </div>
-    <p class="muted">先自己想答案，再點開看回答方向。各題目專屬的問題在「方向清單」的詳細頁中。</p>
-    <div class="qa" id="qa"></div>
+    <p class="muted">先自己想答案，再點開看回答方向。以下為歷史題目，僅供參考。</p>
+    <div class="qa" id="qa"></div></div></details>
   </section>
 
   <!-- 歸還守則 -->
@@ -279,7 +329,7 @@
 
   <!-- 依據 -->
   <section class="view" id="src">
-    <h2 class="sec first">資料依據</h2>
+    <h2 class="sec first">技術依據與參考資料</h2><p class="muted">保留既有技術來源；舊版方向評估僅供研究歷程參考，與目前展示方向需分開判讀。</p>
     <p class="muted">可行性分數、難度與成本為依你目前條件（機械系、程式基礎、LattePanda 單板電腦、1–1.5 學期）所做的工程判斷；感測器價格為約略市價，依通路浮動。</p>
     <div class="srcs" id="srcs"></div>
   </section>
@@ -319,6 +369,7 @@
 <script src="data.js?v=20261007a"></script>
 <script src="app.js?v=20261007a"></script>
 <script src="tasks.js?v=20261007a"></script>
+<script src="purchases.js?v=20261012b"></script>
 <script>
 async function loadSiteInfo() {
   try {
