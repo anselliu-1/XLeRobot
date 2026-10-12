@@ -21,7 +21,7 @@
     $('#fileItems').innerHTML=shown.map(f=>'<article class="hw"><header><h3>'+esc(f.original_name)+'</h3></header>'+
       '<p class="muted">'+esc(({task:'分工附件',image:'商品圖片',receipt:'報銷憑證'})[f.kind])+
       ' · '+esc(f.parent_name)+' · '+Math.ceil((f.size||0)/1024)+' KB · '+esc(f.created||'')+'</p>'+
-      '<p><a class="btn ghost" href="'+esc(f.url)+'" target="_blank" rel="noopener">預覽／下載</a></p></article>').join('')||'<p class="muted">沒有符合條件的檔案。</p>';
+      '<p><label><input type="checkbox" data-file-id="'+esc(f.id)+'"> 選取下載</label> <a class="btn ghost" href="'+esc(f.url)+'" target="_blank" rel="noopener">預覽／下載</a></p></article>').join('')||'<p class="muted">沒有符合條件的檔案。</p>';
   }
   async function loadFiles(){
     if(!admin)return;
@@ -32,6 +32,19 @@
   $('#fileSearch').addEventListener('input',render);
   $('#fileType').addEventListener('change',render);
   $('#fileRefresh').onclick=loadFiles;
+  $('#fileZip').onclick=async()=>{
+    if(!admin)return;
+    const ids=[...document.querySelectorAll('#fileItems [data-file-id]:checked')].map(x=>x.dataset.fileId);
+    if(!ids.length){alert('請先勾選要下載的檔案');return;}
+    if(ids.length>50){alert('每次最多選擇 50 個檔案');return;}
+    const b=$('#fileZip');b.disabled=true;b.textContent='打包中…';
+    try{
+      const r=await fetch('/api/admin/files/zip',{method:'POST',headers:{...headers(),'Content-Type':'application/json'},body:JSON.stringify({ids})});
+      if(!r.ok){const d=await r.json();throw Error(d.error||'下載失敗');}
+      const url=URL.createObjectURL(await r.blob()),a=document.createElement('a');
+      a.href=url;a.download='XLeRobot_files.zip';a.click();setTimeout(()=>URL.revokeObjectURL(url),10000);
+    }catch(e){alert(e.message);}finally{b.disabled=false;b.textContent='下載勾選檔案 ZIP';}
+  };
   $('#adminSettingsLogout').onclick=()=>{
     localStorage.removeItem('xle-admin');auth();
     window.dispatchEvent(new CustomEvent('xle-admin-change',{detail:{admin:false}}));
