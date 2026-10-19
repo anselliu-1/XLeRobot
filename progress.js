@@ -3,8 +3,8 @@
   const esc = s => String(s ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const headers = () => ({'X-Admin-Key':localStorage.getItem('xle-admin') || ''});
   const fileSize = n => n<1024 ? n+' bytes' : n<1024*1024 ? (n/1024).toFixed(1)+' KB' : (n/1024/1024).toFixed(2)+' MB';
-  const syncMessage = text => {if($('#prSync').textContent!==text)$('#prSync').textContent=text;};
-  let items = [], matched = new Set(), admin = false, request = 0, timer;
+  const syncMessage = (text,state='') => {const el=$('#prSync');if(el.textContent!==text)el.textContent=text;el.dataset.state=state;};
+  let items = [], matched = new Set(), admin = false, showReportIds = false, request = 0, timer;
   let pendingLoads = 0, lastSnapshot = '';
   const draftFields = () => JSON.stringify(['reporter','subject','content','parent_id'].map(k=>form.elements[k].value));
   let submittedFields = draftFields();
@@ -24,13 +24,14 @@
     if(!response.ok) throw Error(data.error || '操作失敗');
     return data;
   }
+  const showId = () => admin || showReportIds;
   function card(r) {
     return `<article class="blk pr-report ${r.status==='void'?'pr-void':''}" id="report-${r.id}">
-      <header><h3>#${r.id} · v${r.version}　${esc(r.subject)}</h3><span class="tag">${r.status==='valid'?'有效':'已作廢'}</span></header>
-      <p class="muted">${esc(r.reporter)} · ${esc(date(r.created))}${r.parent_id?' · 接續 #'+r.parent_id:''}</p>
+      <header><h3>${esc(r.subject)} · 第 ${r.version} 次回報</h3><span class="tag">${r.status==='valid'?'有效':'已作廢'}</span></header>
+      <p class="muted">${esc(r.reporter)} · ${esc(date(r.created))}${r.parent_id?' · 接續第 '+(r.version-1)+' 次回報':''}${showId()?' · 回報編號 #'+r.id+(r.parent_id?'（接續 #'+r.parent_id+'）':''):''}</p>
       <div class="pr-content">${esc(r.content) || '（無文字內容）'}</div>
       ${r.status==='void'?`<p class="pr-reason">作廢原因：${esc(r.void_reason)}<br>${esc(date(r.void_at))}</p>`:''}
-      <ul class="pr-files">${r.files.map(f=>`<li>${f.removed_at?`<span>${esc(f.name)}（已移除：${esc(f.reason)}）</span>`:`<a href="${f.url}">${esc(f.name)}</a> · ${fileSize(f.size)}${admin && r.status==='void'?` <button class="btn ghost" data-remove="${f.id}" data-report="${r.id}">移除附件</button>`:''}`}</li>`).join('')}</ul>
+      <ul class="pr-files">${r.files.map(f=>`<li>${f.removed_at?`<span>${esc(f.name)}（已移除：${esc(f.reason)}）</span>`:`<a href="${f.url}">${esc(f.name)}</a> · ${fileSize(f.size)}${admin?` <button class="btn ghost" data-remove="${f.id}" data-report="${r.id}">移除附件</button>`:''}`}</li>`).join('')}</ul>
       <div class="pr-actions">${r.status==='valid'?`<button class="btn ghost" data-continue="${r.id}">接續此回報</button>`:''}
       ${admin?`${r.status==='valid'?`<button class="btn ghost" data-void="${r.id}">作廢（填原因）</button>`:`<button class="btn ghost" data-restore="${r.id}">恢復有效（填原因）</button>`}<button class="btn ghost" data-audit="${r.id}">操作紀錄</button>`:''}</div>
       <div class="pr-audit" data-audit-list="${r.id}"></div></article>`;
@@ -46,7 +47,7 @@
       items.forEach(r=>{if(!groups.has(r.root_id))groups.set(r.root_id,[]);groups.get(r.root_id).push(r);});
       $('#prItems').innerHTML=[...groups.values()].sort((a,b)=>sorter(a.at(-1),b.at(-1))).map(g=>{
         const latest=g.at(-1);
-        return `<details class="pr-topic" data-root="${latest.root_id}" ${closed.has(String(latest.root_id))?'':'open'}><summary>${esc(latest.subject)} <span class="muted">· ${g.length} 個版本 · 最近 ${esc(date(latest.created))}</span></summary>${g.sort(sorter).map(card).join('')}</details>`;
+        return `<details class="pr-topic" data-root="${latest.root_id}" ${closed.has(String(latest.root_id))?'':'open'}><summary>${esc(latest.subject)} <span class="muted">· 共 ${g.length} 次回報 · 最近 ${esc(date(latest.created))}</span></summary>${g.sort(sorter).map(card).join('')}</details>`;
       }).join('');
     }
     if(!shown.length) $('#prItems').innerHTML='<p class="muted">沒有符合條件的回報。</p>';
@@ -54,6 +55,7 @@
   async function load(background=false) {
     if(background===true && pendingLoads)return;
     pendingLoads++;
+    if(visible())syncMessage('同步中…','syncing');
     const seq=++request;
     try {
       const query=new URLSearchParams({q:$('#prSearch').value,reporter:$('#prReporter').value,status:$('#prStatus').value});
@@ -61,14 +63,14 @@
       if(seq!==request)return;
       const snapshot=JSON.stringify(d);
       if(snapshot!==lastSnapshot){
-        items=d.items; matched=new Set(d.matched_ids); admin=d.admin;
+        items=d.items; matched=new Set(d.matched_ids); admin=d.admin; showReportIds=!!d.show_report_ids; if(settingsToggle && admin && document.activeElement!==settingsToggle)settingsToggle.checked=showReportIds;
         const selected=$('#prReporter').value;
         $('#prReporter').innerHTML='<option value="">全部姓名</option>'+d.reporters.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');
         $('#prReporter').value=selected; render();lastSnapshot=snapshot;
       }
-      syncMessage('自動同步中：每 5 秒更新，保留正在填寫的內容與附件。');
+      syncMessage('● 已連線 · 每 5 秒自動同步（不影響草稿及附件）','connected');
     } catch(e) {
-      if(seq===request)syncMessage('同步暫時失敗，稍後會自動重試：'+e.message);
+      if(seq===request)syncMessage('● 連線異常 · 將自動重試：'+e.message,'error');
     } finally {pendingLoads--;}
   }
   function cancel() {
@@ -88,13 +90,14 @@
     e.preventDefault(); const button=form.querySelector('[type=submit]');
     const files=[...form.elements.files.files];
     if(files.length>20 || files.reduce((n,f)=>n+f.size,0)>50*1024*1024){$('#prMessage').textContent='每筆最多 20 個附件，合計上限 50MB';return;}
-    if(!confirm('確認送出？送出後不可修改，可接續建立新版本。'))return;
+    if(!form.elements.content.value.trim()){ $('#prMessage').textContent='請填寫回報內容';form.elements.content.focus();return; }
+    if(!confirm('確認送出？送出後不可修改，可接續建立新回報。'))return;
     const body=new FormData(form); button.disabled=true; $('#prMessage').textContent='上傳並儲存中，請勿重複送出…';
     try {
       const d=await api('/api/progress',{method:'POST',body});
       const reporter=form.elements.reporter.value;form.reset();form.elements.reporter.value=reporter;cancel();
       submittedFields=draftFields();
-      $('#prUploadSize').textContent=''; $('#prMessage').textContent=`已送出 #${d.id} · v${d.version}`; await load();
+      $('#prUploadSize').textContent=''; $('#prMessage').textContent=`已送出第 ${d.version} 次回報${showId()?'（#'+d.id+'）':''}`; await load();
     } catch(e) {$('#prMessage').textContent=e.message+'；若連線中斷，請先重新整理確認是否已建立，避免重複送出。';}
     finally {button.disabled=false;}
   };
@@ -107,7 +110,7 @@
       form.elements.parent_id.value=r.id; form.elements.subject.value=r.subject;form.elements.subject.readOnly=true;
       form.elements.content.value='';form.elements.files.value='';$('#prUploadSize').textContent='';
       submittedFields=draftFields();
-      $('#prFormTitle').textContent='接續回報 #'+r.id;$('#prParentHint').textContent='同一主題下新增版本，保留接續來源；舊附件不會帶入。';
+      $('#prFormTitle').textContent='接續第 '+r.version+' 次回報';$('#prParentHint').textContent='同一主題下新增回報，保留接續來源；舊附件不會帶入。';
       $('#prCancel').hidden=false;form.scrollIntoView({behavior:'smooth'});form.elements.reporter.focus();return;
     }
     b.disabled=true;
@@ -130,6 +133,15 @@
   ['prSort','prView'].forEach(id=>$('#'+id).onchange=render);
   $('#prRefresh').onclick=load;
   $('[data-view="progress"]').addEventListener('click',load);
+  const settingsToggle=$('#progressShowIds'),settingsMsg=$('#progressShowIdsMsg');
+  if(settingsToggle)settingsToggle.onchange=async()=>{
+    settingsToggle.disabled=true;settingsMsg.textContent='儲存中…';
+    try{
+      await api('/api/progress/settings',{method:'POST',headers:{...headers(),'Content-Type':'application/json'},body:JSON.stringify({show_report_ids:settingsToggle.checked})});
+      settingsMsg.textContent='已儲存';await load();
+    }catch(e){settingsToggle.checked=!settingsToggle.checked;settingsMsg.textContent='儲存失敗：'+e.message;}
+    finally{settingsToggle.disabled=false;}
+  };
   window.addEventListener('xle-admin-change',load);
   window.addEventListener('storage',e=>{if(e.key==='xle-admin')load();});
   const visible = () => !document.hidden && $('#progress').classList.contains('on');
