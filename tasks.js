@@ -189,7 +189,7 @@
     if(aid){ if(confirm("刪除這個附件？")) call("DELETE","/api/attachments/"+aid).catch(()=>{}); return; }
     const id = e.target.dataset.del; if (!id) return;
     const t = tasks.find(x => x.id === id);
-    if (confirm("刪除這項工作？全組都會看不到。\n" + (t ? t.task : ""))) call("DELETE", "/api/tasks/" + id).catch(() => {});
+    xleDialog({title:'確認刪除工作主題',message:'工作：'+(t?t.task:'')+'\\n刪除後工作清單不再顯示，但既有進度回報仍會保留。',danger:true,label:'確認刪除'}).then(ok=>{if(ok)call("DELETE","/api/tasks/"+id).catch(()=>{});});
   });
 
   // 篩選與排序
