@@ -4,7 +4,7 @@
   const headers = () => ({'X-Admin-Key':localStorage.getItem('xle-admin') || ''});
   const fileSize = n => n<1024 ? n+' bytes' : n<1024*1024 ? (n/1024).toFixed(1)+' KB' : (n/1024/1024).toFixed(2)+' MB';
   const syncMessage = (text,state='') => {const el=$('#prSync');if(!el)return;const span=el.querySelector('span');if(span&&span.textContent!==text)span.textContent=text;el.className='sync '+(state==='connected'?'ok':state==='error'?'bad':'');};
-  let items = [], matched = new Set(), admin = false, showReportIds = false, request = 0, timer;
+  let items = [], matched = new Set(), admin = false, showReportIds = false, exportAll = false, request = 0, timer;
   let pendingLoads = 0, lastSnapshot = '', taskFilter = '';
   let taskOptions = [];
   const draftFields = () => JSON.stringify(['reporter','subject','content'].map(k=>form.elements[k].value.trim()));
@@ -40,6 +40,7 @@
       const sel=$('#prTask'),flt=$('#prTaskFilter');
       const old=sel.value,oldFilter=flt.value;
       const options='<option value="">不關聯工作項目</option>'+taskOptions.map(t=>'<option value="'+esc(t.id)+'">'+esc(t.name)+'</option>').join('');
+      $('#prExportTask').innerHTML=taskOptions.map(t=>'<option value="'+esc(t.id)+'">'+esc(t.name)+'</option>').join('');
       sel.innerHTML=options; sel.value=old;
       flt.innerHTML='<option value="">全部工作</option><option value="__none">未關聯工作</option>'+taskOptions.map(t=>'<option value="'+esc(t.id)+'">'+esc(t.name)+'</option>').join('');
       flt.value=oldFilter||taskFilter;
@@ -55,6 +56,7 @@
       <ul class="pr-files">${r.files.map(f=>`<li>${f.removed_at?`<span>${esc(f.name)}（已移除：${esc(f.reason)}）</span>`:`<a href="${f.url}">${esc(f.name)}</a> · ${fileSize(f.size)}${admin?` <button class="btn ghost" data-remove="${f.id}" data-report="${r.id}">移除附件</button>`:''}`}</li>`).join('')}</ul>
       <div class="pr-actions">${r.status==='valid'?`<button class="btn ghost" data-continue="${r.id}">接續此回報</button>`:''}
       ${admin?`<button class="btn ghost" data-relink="${r.id}">修正工作關聯</button>`:""}
+      ${(admin||exportAll)?`<button class="btn ghost" data-export="${r.id}">匯出本筆</button>`:''}
       ${admin?`${r.status==='valid'?`<button class="btn ghost" data-void="${r.id}">作廢</button>`:`<button class="btn ghost" data-restore="${r.id}">恢復有效</button>`}<button class="btn ghost" data-audit="${r.id}">操作紀錄</button>`:''}</div>
       <div class="pr-audit" data-audit-list="${r.id}"></div></article>`;
   }
@@ -85,7 +87,10 @@
       if(seq!==request)return;
       const snapshot=JSON.stringify(d);
       if(snapshot!==lastSnapshot){
-        items=d.items; matched=new Set(d.matched_ids); admin=d.admin; showReportIds=!!d.show_report_ids; if(settingsToggle && admin && document.activeElement!==settingsToggle)settingsToggle.checked=showReportIds;
+        items=d.items; matched=new Set(d.matched_ids); admin=d.admin; showReportIds=!!d.show_report_ids; exportAll=!!d.export_all;
+        $('#prExportPanel').hidden=!(admin||exportAll);
+        if(exportPermission && admin && document.activeElement!==exportPermission)exportPermission.value=exportAll?'all':'admin';
+        if(settingsToggle && admin && document.activeElement!==settingsToggle)settingsToggle.checked=showReportIds;
         const selected=$('#prReporter').value;
         $('#prReporter').innerHTML='<option value="">全部姓名</option>'+d.reporters.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');
         $('#prReporter').value=selected; render();lastSnapshot=snapshot;
@@ -129,6 +134,7 @@
   };
   $('#prItems').onclick=async e=>{
     const b=e.target.closest('button'); if(!b)return;
+    if(b.dataset.export){await doExport('single',Number(b.dataset.export));return;}
     if(b.dataset.continue){
       const r=items.find(x=>x.id===Number(b.dataset.continue));
       if(!r || r.status!=='valid')return;
@@ -177,6 +183,34 @@
       (async()=>{if(!await mayLeave())return;resetForm();showForm();form.elements.task_id.value=e.detail.taskId;form.scrollIntoView({behavior:'smooth'});})();
     }else render();
   });
+  const exportPermission=$('#prExportPermission'),exportPermissionMsg=$('#prExportPermissionMsg');
+  if(exportPermission)exportPermission.onchange=async()=>{
+    exportPermission.disabled=true;exportPermissionMsg.textContent='儲存中…';
+    try{
+      await api('/api/progress/settings',{method:'POST',headers:{...headers(),'Content-Type':'application/json'},body:JSON.stringify({export_all:exportPermission.value==='all'})});
+      exportPermissionMsg.textContent='已儲存';await load();
+    }catch(e){exportPermission.value=exportAll?'all':'admin';exportPermissionMsg.textContent='儲存失敗：'+e.message;}
+    finally{exportPermission.disabled=false;}
+  };
+  $('#prExportScope').onchange=()=>{$('#prExportTaskWrap').hidden=$('#prExportScope').value!=='task';};
+  async function doExport(scope,id=0){
+    const msg=$('#prExportMsg'),button=$('#prExportGo');
+    const payload={scope,format:$('#prExportFormat').value};
+    if(scope==='single')payload.report_id=id;
+    if(scope==='task')payload.task_id=$('#prExportTask').value;
+    if(scope==='filtered')payload.ids=items.filter(r=>matched.has(r.id)&&(!taskFilter||(taskFilter==='__none'?!r.task_id:r.task_id===taskFilter))).map(r=>r.id);
+    button.disabled=true;msg.textContent='正在整理 PDF 與附件，請稍候…';
+    try{
+      const response=await fetch('/api/progress/export',{method:'POST',headers:{...headers(),'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      if(!response.ok){let d;try{d=await response.json();}catch{}throw Error(d?.error||'匯出失敗');}
+      const blob=await response.blob(),url=URL.createObjectURL(blob),a=document.createElement('a');
+      a.href=url;a.download='XLeRobot_進度回報.'+(payload.format==='pdf'?'pdf':'zip');
+      document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
+      msg.textContent='匯出完成';
+    }catch(e){msg.textContent='匯出失敗：'+e.message;}
+    finally{button.disabled=false;}
+  }
+  $('#prExportGo').onclick=()=>doExport($('#prExportScope').value);
   const settingsToggle=$('#progressShowIds'),settingsMsg=$('#progressShowIdsMsg');
   if(settingsToggle)settingsToggle.onchange=async()=>{
     settingsToggle.disabled=true;settingsMsg.textContent='儲存中…';
