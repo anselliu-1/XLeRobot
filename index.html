@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261019n">
+<link rel="stylesheet" href="style.css?v=20261019p">
 <link rel="stylesheet" href="progress.css?v=20261019b">
 </head>
 <body>
@@ -69,6 +69,17 @@
       <label>日期排序<select id="prSort"><option value="desc">遞減（最新優先）</option><option value="asc">遞增（最早優先）</option></select></label>
       <label>檢視<select id="prView"><option value="topic">依主題／完整版本歷程</option><option value="time">依時間</option></select></label>
       <button type="button" class="btn ghost" id="prRefresh">重新整理</button>
+    </div>
+    <div class="blk pr-export" id="prExportPanel" hidden>
+      <h2>匯出進度回報</h2>
+      <div class="pr-export-fields">
+        <label>匯出範圍<select id="prExportScope"><option value="all">全部回報</option><option value="filtered">目前篩選結果</option><option value="task">指定工作主題</option></select></label>
+        <label id="prExportTaskWrap" hidden>指定工作<select id="prExportTask"></select></label>
+        <label>檔案格式<select id="prExportFormat"><option value="zip">ZIP（PDF＋原始附件）</option><option value="pdf">僅 PDF</option></select></label>
+      </div>
+      <button type="button" class="btn" id="prExportGo">匯出回報</button>
+      <p class="muted">ZIP 保留原始附件格式；已永久移除的附件僅記錄移除資訊。單筆回報可從回報卡片匯出。</p>
+      <p id="prExportMsg" class="muted" role="status"></p>
     </div>
     <div class="sync" id="prSync" role="status" aria-live="off"><i></i><span>連線中…</span></div><p id="prCount" role="status"></p><div id="prItems"></div>
   </section>
@@ -137,26 +148,33 @@
   <section class="view" id="adminsettings">
     <h2 class="sec first">管理員設定</h2>
     <p class="muted">此頁僅管理員登入後顯示；設定資料由後端驗證權限。</p>
-    <div class="hw"><header><h3>管理員登入狀態</h3></header><p>管理者模式已啟用。可在「分工 & 時程」登出。</p><button class="btn ghost" id="adminSettingsLogout">管理員登出</button></div>
+<div class="admin-groups">
+<details class="admin-group"><summary>系統與管理員</summary><div class="admin-group-body"><div class="hw"><header><h3>管理員登入狀態</h3></header><p>管理者模式已啟用。可在「分工 & 時程」登出。</p><button class="btn ghost" id="adminSettingsLogout">管理員登出</button></div>
     <div class="hw"><header><h3>系統資訊</h3></header><p>測試站：XLeRobot-Staging・v1.4.0 測試版</p></div>
-    <div class="hw"><header><h3>進度回報顯示設定</h3></header><label><input type="checkbox" id="progressShowIds"> 向一般組員顯示回報編號</label><p class="muted">預設關閉；管理員始終可查看編號。設定適用所有組員。</p><p id="progressShowIdsMsg" class="muted" role="status"></p></div>
-    <div class="hw"><header><h3>分工時程完成權限</h3></header><label><input type="checkbox" id="allowMemberCompletion"> 允許一般組員勾選工作完成</label><p class="muted">預設關閉。關閉時僅管理員可操作；切換不會改變既有完成狀態。</p><p id="memberCompletionMsg" class="muted" role="status"></p></div>
+    </div></details>
+<details class="admin-group"><summary>進度回報</summary><div class="admin-group-body"><div class="hw"><header><h3>進度回報顯示設定</h3></header><label><input type="checkbox" id="progressShowIds"> 向一般組員顯示回報編號</label><p class="muted">預設關閉；管理員始終可查看編號。設定適用所有組員。</p><p id="progressShowIdsMsg" class="muted" role="status"></p></div>
+    <div class="hw"><header><h3>進度回報匯出權限</h3></header><label>允許匯出的對象<select id="prExportPermission"><option value="admin">僅管理員可匯出（預設）</option><option value="all">所有人皆可匯出</option></select></label><p class="muted">適用 PDF 與 ZIP、所有匯出範圍。權限由伺服器驗證。</p><p id="prExportPermissionMsg" class="muted" role="status"></p></div></div></details>
+<details class="admin-group"><summary>分工＆時程</summary><div class="admin-group-body"><div class="hw"><header><h3>分工時程完成權限</h3></header><label><input type="checkbox" id="allowMemberCompletion"> 允許一般組員勾選工作完成</label><p class="muted">預設關閉。關閉時僅管理員可操作；切換不會改變既有完成狀態。</p><p id="memberCompletionMsg" class="muted" role="status"></p></div>
     <div class="hw"><header><h3>完成狀態操作紀錄</h3></header><button class="btn ghost" id="taskAuditRefresh" type="button">查看最近 300 筆操作紀錄</button><div id="taskAuditList" class="muted"></div></div>
-    <div class="hw"><header><h3>完整資料備份</h3></header>
+    </div></details>
+<details class="admin-group"><summary>資料與備份</summary><div class="admin-group-body"><div class="hw"><header><h3>完整資料備份</h3></header>
       <p>一鍵下載 ZIP：包含進度回報、分工時程、採購清單、風險與設定、操作紀錄，以及目前仍保留的附件、商品圖片和報銷憑證。</p>
       <p class="muted">也包含資料庫快照、可讀取的 JSON、檔案核對清單與網站程式。已永久移除的檔案無法備份；雲端憑證與管理員金鑰不包含在內。打包期間請保留此頁，完成後請將 ZIP 儲存到電腦。</p>
       <button class="btn" id="fullBackupDownload">一鍵備份全部資料與檔案（ZIP）</button><p id="lastBackupTime" class="muted">上次成功備份時間：載入中…</p><p id="fullBackupMsg" class="muted" role="status"></p>
     </div>
-    <details class="legacy" id="purchasePermissionsPanel" hidden><summary>管理員｜報銷權限設定</summary><div class="legacy-body">
+    </div></details>
+<details class="admin-group"><summary>報銷與通知</summary><div class="admin-group-body"><details class="legacy" id="purchasePermissionsPanel"><summary>管理員｜報銷權限設定</summary><div class="legacy-body">
     <label><input type="checkbox" id="refundView"> 允許組員查看報銷狀態</label><p><label><input type="checkbox" id="refundEdit"> 允許組員修改報銷狀態（需先允許查看）</label></p>
     <button class="btn" id="purchasePermSave">儲存權限設定</button><p class="muted" id="purchasePermMsg"></p></div></details>
-    <details class="legacy" id="notifyPanel" hidden><summary>管理員｜Discord 通知設定</summary>
+    <details class="legacy" id="notifyPanel"><summary>管理員｜Discord 通知設定</summary>
     <div class="legacy-body"><p class="muted">通知透過 Railway 設定的 DISCORD_WEBHOOK_URL 傳送到 Discord 頻道。</p><p id="progressNotifyStatus" class="muted">進度回報通知狀態：載入中…</p>
     <label><input type="checkbox" id="notifyEnabled"> 啟用 Discord 通知</label>
     <p><label>寄送方式 <select id="notifyMode"><option value="instant">即時通知</option><option value="digest">10 分鐘合併通知</option></select></label></p>
     <p class="muted">進度回報通知一律即時發送，不受「10 分鐘合併」影響。進度回報事件與其他通知共用總開關，包含恢復有效。關閉時不建立新通知，既有待送通知暫停；重新啟用後補送。</p>
     <div id="notifyEvents" class="buy-notify-grid"></div><button class="btn" id="notifySave">儲存通知設定</button><p id="notifyMsg" class="muted"></p></div></details>
 
+</div></details>
+</div>
   </section>
   <!-- 檔案管理：後端提供管理員專用清單 -->
   <section class="view" id="fileadmin">
@@ -447,7 +465,7 @@
 <script src="purchases.js?v=20261019f"></script>
 <script src="admin-pages.js?v=20261019n"></script>
 <script src="risks-admin.js?v=20261012a"></script>
-<script src="progress.js?v=20261019n"></script>
+<script src="progress.js?v=20261019p"></script>
 <script>
 async function loadSiteInfo() {
   try {
