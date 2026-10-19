@@ -108,7 +108,7 @@
     if(files.length>20 || files.reduce((n,f)=>n+f.size,0)>50*1024*1024){$('#prMessage').textContent='每筆最多 20 個附件，合計上限 50MB';return;}
     if(!form.elements.content.value.trim()){ $('#prMessage').textContent='請填寫回報內容';form.elements.content.focus();return; }
     const linked=taskOptions.find(t=>t.id===form.elements.task_id.value);
-    if(!confirm('確認送出？'+(linked?'\\n關聯工作：'+linked.name:'\\n未關聯工作')+'\\n送出後不可修改，可接續建立新回報。'))return;
+    if(!await xleDialog({title:'確認送出進度回報',message:'回報主題：'+form.elements.subject.value+'\n關聯工作：'+(linked?linked.name:'未關聯工作')+'\n附件：'+files.length+' 個\n送出後無法修改原始內容，後續請使用接續回報。',label:'確認送出'}))return;
     const body=new FormData(form); button.disabled=true; $('#prMessage').textContent='上傳並儲存中，請勿重複送出…';
     try {
       const d=await api('/api/progress',{method:'POST',body});
@@ -135,25 +135,24 @@
     try {
       if(b.dataset.relink){
         const r=items.find(x=>x.id===Number(b.dataset.relink));
-        const chosen=prompt('請輸入新的工作 ID（留空表示取消關聯）：\\n'+taskOptions.map(t=>t.id+'：'+t.name).join('\\n'),r?.task_id||'');
+        const chosen=await xleDialog({title:'修正關聯工作',message:'請選擇正確的工作主題',options:[{value:'',label:'不關聯工作'}].concat(taskOptions.map(t=>({value:t.id,label:t.name}))),value:r?.task_id||'',label:'下一步'});
         if(chosen===null)return;
-        if(chosen && !taskOptions.some(t=>t.id===chosen)){alert('工作 ID 不存在');return;}
-        const reason=prompt('請填寫修正關聯原因（必填）');
-        if(!reason?.trim())return;
+        const reason=await xleDialog({title:'修正原因',message:'此操作會保留關聯變更紀錄。',kind:'reason',requireReason:true,label:'確認修正'});
+        if(reason===null)return;
         await api('/api/progress/'+b.dataset.relink+'/relink',{method:'POST',headers:{...headers(),'Content-Type':'application/json'},body:JSON.stringify({task_id:chosen,reason})});
         await load();
       } else if(b.dataset.audit){
         const d=await api('/api/progress/'+b.dataset.audit+'/audit',{headers:headers()});
         document.querySelector(`[data-audit-list="${b.dataset.audit}"]`).innerHTML=d.items.map(a=>`<p>${esc(date(a.created))} · ${esc(a.action)} · ${esc(a.actor)} ${esc(a.reason)}</p>`).join('');
       } else if(b.dataset.void || b.dataset.remove || b.dataset.restore){
-        const reason=prompt(b.dataset.restore?'恢復有效的原因（已永久移除的附件無法恢復）':b.dataset.remove?'移除附件的原因（檔案將永久移除，保留紀錄）':'作廢原因（必填，保留原始回報）');
-        if(!reason || !reason.trim())return;
-        if(b.dataset.remove && !confirm('確認永久移除此附件？此操作無法復原。'))return;
+        const removing=!!b.dataset.remove;
+        const reason=await xleDialog({title:b.dataset.restore?'恢復進度回報':removing?'永久移除附件':'作廢進度回報',message:b.dataset.restore?'請填寫恢復原因；已刪除的附件無法恢復。':removing?'檔案將永久移除，操作原因與紀錄會保留。':'原始回報會保留，並標示為已作廢。',kind:'reason',requireReason:true,ack:removing,danger:removing,label:removing?'確認永久移除':'確認'});
+        if(reason===null)return;
         const rid=b.dataset.void || b.dataset.restore || b.dataset.report;
         const d=await api('/api/progress/'+rid+'/'+(b.dataset.void?'void':b.dataset.restore?'restore':'remove-file'),{method:'POST',headers:{...headers(),'Content-Type':'application/json'},body:JSON.stringify({reason,file_id:b.dataset.remove})});
-        if(d.warning)alert(d.warning); await load();
+        if(d.warning)await xleDialog({title:'操作提醒',message:d.warning,kind:'notice'}); await load();
       }
-    } catch(e){alert(e.message);} finally {b.disabled=false;}
+    } catch(e){await xleDialog({title:'操作失敗',message:e.message,kind:'notice'});} finally {b.disabled=false;}
   };
   $('#prSearch').oninput=()=>{clearTimeout(timer);timer=setTimeout(load,250);};
   ['prReporter','prStatus'].forEach(id=>$('#'+id).onchange=load);
