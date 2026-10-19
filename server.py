@@ -560,7 +560,7 @@ class H(BaseHTTPRequestHandler):
             rel = "/index.html"
         rel = os.path.normpath(rel.lstrip("/"))
         target = os.path.abspath(os.path.join(root, rel))
-        if rel in {"index.html", "style.css", "app.js", "data.js", "tasks.js", "purchases.js", "admin-pages.js", "admin-files.js", "risks-admin.js", "progress.js", "progress.css", "modal.js", "arm-battery-wiring.png", "team-wiring.png", "wiring-1-lipo.png", "wiring-2-shared-u2d2.png", "wiring-3-powerbank-only.png", "README_v1.3.0.md"} and target.startswith(root + os.sep) and os.path.isfile(target):
+        if rel in {"index.html", "style.css", "app.js", "data.js", "tasks.js", "purchases.js", "admin-pages.js", "admin-files.js", "nav-scroll.js", "risks-admin.js", "progress.js", "progress.css", "modal.js", "arm-battery-wiring.png", "team-wiring.png", "wiring-1-lipo.png", "wiring-2-shared-u2d2.png", "wiring-3-powerbank-only.png", "README_v1.3.0.md"} and target.startswith(root + os.sep) and os.path.isfile(target):
             try:
                 with open(target, "rb") as f:
                     b = f.read()
@@ -959,4 +959,5 @@ if __name__ == "__main__":
     print(f"listening on {PORT}, db={DB}, attachment_storage={'bucket' if S3_ENABLED else 'local'}", flush=True)
     threading.Thread(target=mail_worker, daemon=True).start()
     ThreadingHTTPServer(("0.0.0.0", PORT), H).serve_forever()
+
 
