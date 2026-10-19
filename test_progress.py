@@ -253,4 +253,15 @@ class ProgressTests(unittest.TestCase):
             self.assertEqual(code,503);self.assertIn('error',data);self.assertNotEqual(headers['Content-Type'],'application/zip')
         finally: path.write_bytes(b'missing')
 
+    def test_backup_last_success_time(self):
+        self.assertEqual(self.req('/api/admin/backup/status')[0],403)
+        with app.conn() as c:
+            c.execute("INSERT INTO admin_backup_audit(id,created,completed,actor,status) VALUES('status-success','2098-01-01','2098-01-01T10:00:00+08:00','test','transferred')")
+            c.execute("INSERT INTO admin_backup_audit(id,created,completed,actor,status) VALUES('status-failed','2099-01-01','2099-01-01T10:00:00+08:00','test','failed')")
+        try:
+            code,d,_=self.req('/api/admin/backup/status',admin=True)
+            self.assertEqual(code,200);self.assertEqual(d['last_backup_at'],'2098-01-01T10:00:00+08:00')
+        finally:
+            with app.conn() as c:c.execute("DELETE FROM admin_backup_audit WHERE id IN ('status-success','status-failed')")
+
 if __name__=='__main__': unittest.main()

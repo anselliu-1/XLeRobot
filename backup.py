@@ -99,9 +99,16 @@ def build(folder):
         if z.testzip() is not None: raise ValueError('Archive integrity check failed')
     return archive,len(files)
 
-def route(h):
-    if h._path()!='/api/admin/backup': return False
+def route(h,method='POST'):
+    path=h._path()
+    if path not in ('/api/admin/backup','/api/admin/backup/status'): return False
     if not A.is_admin(h): h._send(403,{'error':'需要已驗證的管理員'}); return True
+    if path=='/api/admin/backup/status' and method=='GET':
+        with A.LOCK,A.conn() as c:
+            row=c.execute("SELECT completed FROM admin_backup_audit WHERE status='transferred' AND completed<>'' ORDER BY completed DESC LIMIT 1").fetchone()
+        h._send(200,{'last_backup_at':row['completed'] if row else None});return True
+    if path!='/api/admin/backup' or method!='POST':
+        h._send(405,{'error':'不支援此操作'});return True
     from urllib.parse import urlsplit
     origin=h.headers.get('Origin')
     if origin and urlsplit(origin).netloc!=h.headers.get('Host'):

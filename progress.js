@@ -6,6 +6,16 @@
   const syncMessage = text => {if($('#prSync').textContent!==text)$('#prSync').textContent=text;};
   let items = [], matched = new Set(), admin = false, request = 0, timer;
   let pendingLoads = 0, lastSnapshot = '';
+  const draftFields = () => JSON.stringify(['reporter','subject','content','parent_id'].map(k=>form.elements[k].value));
+  let submittedFields = draftFields();
+  const hasDraft = () => draftFields()!==submittedFields || form.elements.files.files.length>0;
+  const mayLeave = () => !hasDraft() || confirm('有尚未送出的回報。確定離開或放棄目前輸入？本網站不會保存草稿。');
+  window.addEventListener('beforeunload',e=>{
+    if(hasDraft()){e.preventDefault();e.returnValue='';}
+  });
+  window.addEventListener('xle-before-view-change',e=>{
+    if(e.detail.from==='progress' && e.detail.to!=='progress' && !mayLeave())e.preventDefault();
+  });
   const date = s => new Intl.DateTimeFormat('zh-TW',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date(s))+'（台灣）';
   async function api(url,options={}) {
     const readTimeout = !options.method || options.method==='GET' ? {signal:AbortSignal.timeout(15000)} : {};
@@ -65,7 +75,11 @@
     form.elements.parent_id.value=''; form.elements.subject.readOnly=false;
     $('#prFormTitle').textContent='新增回報'; $('#prParentHint').textContent=''; $('#prCancel').hidden=true;
   }
-  $('#prCancel').onclick=cancel;
+  $('#prCancel').onclick=()=>{
+    if(!mayLeave())return;
+    const reporter=form.elements.reporter.value;form.reset();form.elements.reporter.value=reporter;
+    cancel();submittedFields=draftFields();$('#prUploadSize').textContent='';
+  };
   form.elements.files.onchange=()=>{
     const files=[...form.elements.files.files],size=files.reduce((n,f)=>n+f.size,0);
     $('#prUploadSize').textContent=`${files.length} 個附件，共 ${(size/1024/1024).toFixed(2)} / 50 MB`;
@@ -79,6 +93,7 @@
     try {
       const d=await api('/api/progress',{method:'POST',body});
       const reporter=form.elements.reporter.value;form.reset();form.elements.reporter.value=reporter;cancel();
+      submittedFields=draftFields();
       $('#prUploadSize').textContent=''; $('#prMessage').textContent=`已送出 #${d.id} · v${d.version}`; await load();
     } catch(e) {$('#prMessage').textContent=e.message+'；若連線中斷，請先重新整理確認是否已建立，避免重複送出。';}
     finally {button.disabled=false;}
@@ -88,8 +103,10 @@
     if(b.dataset.continue){
       const r=items.find(x=>x.id===Number(b.dataset.continue));
       if(!r || r.status!=='valid')return;
+      if(!mayLeave())return;
       form.elements.parent_id.value=r.id; form.elements.subject.value=r.subject;form.elements.subject.readOnly=true;
       form.elements.content.value='';form.elements.files.value='';$('#prUploadSize').textContent='';
+      submittedFields=draftFields();
       $('#prFormTitle').textContent='接續回報 #'+r.id;$('#prParentHint').textContent='同一主題下新增版本，保留接續來源；舊附件不會帶入。';
       $('#prCancel').hidden=false;form.scrollIntoView({behavior:'smooth'});form.elements.reporter.focus();return;
     }

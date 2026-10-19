@@ -2,7 +2,7 @@
   const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
   const key=()=>localStorage.getItem('xle-admin')||'';
   const headers=()=>key()?{'X-Admin-Key':key()}:{};
-  let admin=false, files=[];
+  let admin=false, files=[], backupStatusBusy=false;
   const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   async function auth(){
     let next=false;
@@ -13,6 +13,20 @@
       document.querySelector('[data-view="overview"]').click();
     }
     if(admin && $('#fileadmin').classList.contains('on'))loadFiles();
+    if(admin && $('#adminsettings').classList.contains('on'))loadBackupStatus();
+  }
+  async function loadBackupStatus(){
+    if(!admin || backupStatusBusy)return;
+    backupStatusBusy=true;
+    try{
+      const r=await fetch('/api/admin/backup/status',{headers:headers(),cache:'no-store',signal:AbortSignal.timeout(15000)});
+      if(!r.ok)throw Error('讀取失敗');
+      const d=await r.json();
+      const time=d.last_backup_at?new Intl.DateTimeFormat('zh-TW',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date(d.last_backup_at))+'（台灣時間）':'尚無成功備份紀錄';
+      const text='上次成功備份時間：'+time;
+      if($('#lastBackupTime').textContent!==text)$('#lastBackupTime').textContent=text;
+    }catch{$('#lastBackupTime').textContent='上次成功備份時間：暫時無法讀取';}
+    finally{backupStatusBusy=false;}
   }
   function render(){
     const q=$('#fileSearch').value.trim().toLowerCase(),type=$('#fileType').value;
@@ -61,6 +75,7 @@
       const url=URL.createObjectURL(blob),a=document.createElement('a');
       a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
       status.textContent='已交給瀏覽器下載：'+filename+'（'+(blob.size/1024/1024).toFixed(2)+' MB）。請確認已儲存到電腦。';
+      await loadBackupStatus();setTimeout(loadBackupStatus,1000);
     }catch(e){status.textContent='備份未完成：'+e.message;}
     finally{button.disabled=false;}
   };
@@ -72,6 +87,7 @@
     window.dispatchEvent(new CustomEvent('xle-admin-change',{detail:{admin:false}}));
   };
   $$('[data-view="fileadmin"]').forEach(b=>b.addEventListener('click',loadFiles));
+  $$('[data-view="adminsettings"]').forEach(b=>b.addEventListener('click',loadBackupStatus));
   window.addEventListener('xle-admin-change',auth);
   window.addEventListener('storage',e=>{if(e.key==='xle-admin')auth();});
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)auth();});

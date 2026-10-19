@@ -138,7 +138,7 @@
     <div class="hw"><header><h3>完整資料備份</h3></header>
       <p>一鍵下載 ZIP：包含進度回報、分工時程、採購清單、風險與設定、操作紀錄，以及目前仍保留的附件、商品圖片和報銷憑證。</p>
       <p class="muted">也包含資料庫快照、可讀取的 JSON、檔案核對清單與網站程式。已永久移除的檔案無法備份；雲端憑證與管理員金鑰不包含在內。打包期間請保留此頁，完成後請將 ZIP 儲存到電腦。</p>
-      <button class="btn" id="fullBackupDownload">一鍵備份全部資料與檔案（ZIP）</button><p id="fullBackupMsg" class="muted" role="status"></p>
+      <button class="btn" id="fullBackupDownload">一鍵備份全部資料與檔案（ZIP）</button><p id="lastBackupTime" class="muted">上次成功備份時間：載入中…</p><p id="fullBackupMsg" class="muted" role="status"></p>
     </div>
     <details class="legacy" id="purchasePermissionsPanel" hidden><summary>管理員｜報銷權限設定</summary><div class="legacy-body">
     <label><input type="checkbox" id="refundView"> 允許組員查看報銷狀態</label><p><label><input type="checkbox" id="refundEdit"> 允許組員修改報銷狀態（需先允許查看）</label></p>
@@ -434,12 +434,12 @@
 </div>
 
 <script src="data.js?v=20261007a"></script>
-<script src="app.js?v=20261007a"></script>
+<script src="app.js?v=20261019g"></script>
 <script src="tasks.js?v=20261007a"></script>
 <script src="purchases.js?v=20261019f"></script>
-<script src="admin-pages.js?v=20261019f"></script>
+<script src="admin-pages.js?v=20261019g"></script>
 <script src="risks-admin.js?v=20261012a"></script>
-<script src="progress.js?v=20261019f"></script>
+<script src="progress.js?v=20261019g"></script>
 <script>
 async function loadSiteInfo() {
   try {

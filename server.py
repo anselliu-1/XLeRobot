@@ -422,6 +422,7 @@ class H(BaseHTTPRequestHandler):
     def do_OPTIONS(self): self._send(204, {})
 
     def do_GET(self):
+        if backup.route(self, 'GET'): return
         if progress.route(self, "GET"): return
         p = self._path()
         if p == "/api/health": return self._send(200, {"ok": True})
