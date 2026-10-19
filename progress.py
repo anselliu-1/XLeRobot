@@ -171,7 +171,7 @@ def list_reports(h):
         # Include full histories for matching topics, even if earlier versions do not match.
         roots={r['root_id'] for r in reports if r['id'] in matched}
         items=[r for r in reports if r['root_id'] in roots]
-        return h._send(200,{'items':items,'matched_ids':matched,'reporters':people,'admin':A.is_admin(h),'show_report_ids':(c.execute("SELECT v FROM meta WHERE k='progress_show_ids'").fetchone() or {'v':'0'})['v']=='1','export_all':(c.execute("SELECT v FROM meta WHERE k='progress_export_all'").fetchone() or {'v':'0'})['v']=='1'})
+        return h._send(200,{'items':items,'matched_ids':matched,'reporters':people,'admin':A.is_admin(h),'show_report_ids':(c.execute("SELECT v FROM meta WHERE k='progress_show_ids'").fetchone() or {'v':'0'})['v']=='1','export_all':(c.execute("SELECT v FROM meta WHERE k='progress_export_all'").fetchone() or {'v':'0'})['v']=='1','audit_all':(c.execute("SELECT v FROM meta WHERE k='progress_audit_all'").fetchone() or {'v':'0'})['v']=='1'})
 
 def download(h,fid):
     with A.LOCK, A.conn() as c:
@@ -314,10 +314,11 @@ def route(h,method):
             if not A.is_admin(h): h._send(403,{'error':'需要管理員'})
             else:
                 d=h._body()
-                if not isinstance(d,dict) or not d or any(k not in ('show_report_ids','export_all') or type(v) is not bool for k,v in d.items()):raise ValueError('設定格式錯誤')
+                if not isinstance(d,dict) or not d or any(k not in ('show_report_ids','export_all','audit_all') or type(v) is not bool for k,v in d.items()):raise ValueError('設定格式錯誤')
                 with A.LOCK,A.conn() as c:
                     if 'show_report_ids' in d:c.execute("INSERT OR REPLACE INTO meta(k,v) VALUES('progress_show_ids',?)",('1' if d['show_report_ids'] else '0',))
                     if 'export_all' in d:c.execute("INSERT OR REPLACE INTO meta(k,v) VALUES('progress_export_all',?)",('1' if d['export_all'] else '0',))
+                    if 'audit_all' in d:c.execute("INSERT OR REPLACE INTO meta(k,v) VALUES('progress_audit_all',?)",('1' if d['audit_all'] else '0',))
                 h._send(200,{'ok':True})
         elif method=='GET' and p=='/api/progress': list_reports(h)
         elif method=='GET' and re.fullmatch('/api/progress-files/[a-f0-9]{32}',p): download(h,p.rsplit('/',1)[1])
@@ -325,10 +326,10 @@ def route(h,method):
         elif method=='POST' and re.fullmatch(r'/api/progress/[1-9][0-9]*/(void|restore|remove-file)',p):
             _,_,_,rid,action=p.split('/'); moderate(h,int(rid),action)
         elif method=='GET' and re.fullmatch(r'/api/progress/[1-9][0-9]*/audit',p):
-            if not A.is_admin(h): h._send(403,{'error':'需要管理員'})
-            else:
-                with A.LOCK,A.conn() as c:
-                    h._send(200,{'items':[dict(r) for r in c.execute('SELECT * FROM progress_audit WHERE report_id=? ORDER BY id',(int(p.split('/')[3]),))]})
+            with A.LOCK,A.conn() as c:
+                allowed=A.is_admin(h) or (c.execute("SELECT v FROM meta WHERE k='progress_audit_all'").fetchone() or {'v':'0'})['v']=='1'
+                if not allowed:h._send(403,{'error':'目前僅管理員可查看操作紀錄'})
+                else:h._send(200,{'items':[dict(r) for r in c.execute('SELECT * FROM progress_audit WHERE report_id=? ORDER BY id',(int(p.split('/')[3]),))]})
         elif method=='GET' and p=='/api/progress/notification-status':
             if not A.is_admin(h): h._send(403,{'error':'需要管理員'})
             else:
