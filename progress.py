@@ -164,7 +164,7 @@ def list_reports(h):
         # Include full histories for matching topics, even if earlier versions do not match.
         roots={r['root_id'] for r in reports if r['id'] in matched}
         items=[r for r in reports if r['root_id'] in roots]
-        return h._send(200,{'items':items,'matched_ids':matched,'reporters':people,'admin':A.is_admin(h)})
+        return h._send(200,{'items':items,'matched_ids':matched,'reporters':people,'admin':A.is_admin(h),'show_report_ids':(c.execute("SELECT v FROM meta WHERE k='progress_show_ids'").fetchone() or {'v':'0'})['v']=='1'})
 
 def download(h,fid):
     with A.LOCK, A.conn() as c:
@@ -188,7 +188,7 @@ def create(h):
         fields,files=read_form(h)
         reporter=text_field(fields.get('reporter',''),80,'回報人',True)
         subject=text_field(fields.get('subject',''),200,'主題',True)
-        content=text_field(fields.get('content',''),10000,'內容')
+        content=text_field(fields.get('content',''),10000,'內容',True)
         parent=fields.get('parent_id','').strip()
         if parent and not re.fullmatch(r'[1-9][0-9]{0,9}',parent): raise ValueError('無效接續回報')
         with A.LOCK, A.conn() as c:
@@ -253,7 +253,7 @@ def moderate(h,rid,action):
             if not isinstance(fid,str): raise ValueError('請選擇附件')
             f=c.execute('SELECT * FROM progress_files WHERE id=? AND report_id=?',(fid,rid)).fetchone()
             if not f or f['removed_at']: return h._send(404,{'error':'附件不存在或已移除'})
-            if r['status']!='void': raise ValueError('請先作廢回報，再移除附件')
+            # 管理員可移除有效或已作廢回報的附件
             # Commit a durable removal intention first; retries finish an interrupted deletion.
             c.execute('UPDATE progress_files SET removed_at=?,reason=? WHERE id=?',(stamp(),reason,fid))
             event(c,rid,'附件移除','已驗證管理員',reason+'；檔名：'+f['name'],fid)
@@ -273,7 +273,15 @@ def route(h,method):
             origin=h.headers.get('Origin')
             if origin and urllib.parse.urlsplit(origin).netloc!=h.headers.get('Host'):
                 h._send(403,{'error':'不允許跨網站操作'}); return True
-        if method=='GET' and p=='/api/progress': list_reports(h)
+        if method=='POST' and p=='/api/progress/settings':
+            if not A.is_admin(h): h._send(403,{'error':'需要管理員'})
+            else:
+                d=h._body()
+                if not isinstance(d,dict) or type(d.get('show_report_ids')) is not bool: raise ValueError('設定格式錯誤')
+                with A.LOCK,A.conn() as c:
+                    c.execute("INSERT OR REPLACE INTO meta(k,v) VALUES('progress_show_ids',?)",('1' if d['show_report_ids'] else '0',))
+                h._send(200,{'ok':True,'show_report_ids':d['show_report_ids']})
+        elif method=='GET' and p=='/api/progress': list_reports(h)
         elif method=='GET' and re.fullmatch('/api/progress-files/[a-f0-9]{32}',p): download(h,p.rsplit('/',1)[1])
         elif method=='POST' and p=='/api/progress': create(h)
         elif method=='POST' and re.fullmatch(r'/api/progress/[1-9][0-9]*/(void|restore|remove-file)',p):
