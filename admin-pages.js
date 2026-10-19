@@ -9,7 +9,7 @@
     if(key())try{next=(await fetch('/api/auth',{headers:headers(),cache:'no-store'})).ok;}catch{}
     admin=next;
     $$('[data-admin-tab]').forEach(b=>b.hidden=!admin);
-    if(!admin && ($('#fileadmin').classList.contains('on')||$('#adminsettings').classList.contains('on'))){
+    if(!admin && ($('#fileadmin').classList.contains('on')||$('#adminsettings').classList.contains('on')||$('#rules').classList.contains('on'))){
       document.querySelector('[data-view="overview"]').click();
     }
     if(admin && $('#fileadmin').classList.contains('on'))loadFiles();
@@ -33,7 +33,7 @@
     const shown=files.filter(f=>(type==='all'||f.kind===type)&&
       (f.original_name+' '+f.parent_name).toLowerCase().includes(q));
     $('#fileItems').innerHTML=shown.map(f=>'<article class="hw"><header><h3>'+esc(f.original_name)+'</h3></header>'+
-      '<p class="muted">'+esc(({task:'分工附件',image:'商品圖片',receipt:'報銷憑證'})[f.kind])+
+      '<p class="muted">'+esc(({task:'分工附件',progress:'進度回報附件',image:'商品圖片',receipt:'報銷憑證'})[f.kind])+
       ' · '+esc(f.parent_name)+' · '+Math.ceil((f.size||0)/1024)+' KB · '+esc(f.created||'')+'</p>'+
       '<p><label><input type="checkbox" data-file-id="'+esc(f.id)+'"> 選取下載</label> <a class="btn ghost" href="'+esc(f.url)+'" target="_blank" rel="noopener">預覽／下載</a></p></article>').join('')||'<p class="muted">沒有符合條件的檔案。</p>';
   }
@@ -43,6 +43,24 @@
       const d=await r.json();files=d.files||[];render();$('#fileMsg').textContent='共 '+files.length+' 個檔案';
     }catch(e){$('#fileMsg').textContent='檔案清單讀取失敗：'+e.message;}
   }
+  async function loadOverview(){
+    const stats=$('#overviewStats'),topics=$('#overviewTopics');
+    try{
+      const [tr,pr]=await Promise.all([fetch('/api/tasks',{cache:'no-store'}),fetch('/api/progress',{cache:'no-store'})]);
+      if(!tr.ok||!pr.ok)throw Error('暫時無法讀取進度');
+      const td=await tr.json(),pd=await pr.json();
+      const tasks=td.tasks||[],reports=pd.items||[];
+      const count=tasks.length,done=tasks.filter(t=>t.done).length;
+      const rate=count?Math.round(done/count*1000)/10:0;
+      const boxes=[['工作主題',count],['進行中',count-done],['已完成',done],['累計進度回報',reports.length]];
+      stats.innerHTML=boxes.map(([k,v])=>'<article class="hw"><header><h3>'+esc(k)+'</h3></header><strong class="overview-number">'+v+'</strong></article>').join('');
+      $('#overviewProgressBar').style.width=rate+'%';
+      $('#overviewProgressLabel').textContent=done+' / '+count+' 項工作主題已完成（'+rate+'%）';
+      topics.innerHTML=tasks.length?tasks.map(t=>'<article class="hw"><header><h3>'+esc(t.task)+'</h3></header><p>'+(t.done?'已完成':'進行中')+' · '+(t.report_count||0)+' 筆進度回報</p>'+(t.latest_report?'<p class="muted">最近更新：'+esc(t.latest_report.created.slice(0,16))+'</p>':'<p class="muted">尚無關聯回報</p>')+'</article>').join(''):'<p class="muted">尚無工作主題。</p>';
+    }catch(e){stats.textContent='進度載入失敗：'+e.message;topics.textContent='請稍後重新整理。';}
+  }
+  $('[data-view="overview"]').forEach(b=>b.addEventListener('click',loadOverview));
+  loadOverview();
   $('#fileSearch').addEventListener('input',render);
   $('#fileType').addEventListener('change',render);
   $('#fileRefresh').onclick=loadFiles;
