@@ -458,3 +458,39 @@ body.tk-admin .tk{grid-template-columns:84px 1.8fr minmax(168px,1.1fr) 122px 50p
 /* 測試站：收合新增回報與已隱藏的舊版規劃 */
 #prForm[hidden],#prNew[hidden],.legacy[hidden]{display:none!important}
 #prNew{margin:0 0 14px}
+
+/* 2026-10-19 staging: overview breathing room, report headings, admin settings */
+#overviewStats .hw{padding-bottom:16px}
+#overviewStats .overview-number{display:block;padding:14px 18px 3px;line-height:1.35}
+#overviewStats .hw header{padding:13px 18px}
+#overviewProgressBar{display:block}
+#overviewProgressLabel{display:block;margin:10px 18px 17px}
+#overviewStats + .hw{padding-bottom:12px}
+#overviewTopics .hw{padding-bottom:15px;min-width:0}
+#overviewTopics .hw header{padding:13px 18px}
+#overviewTopics .hw header h3{overflow-wrap:anywhere;line-height:1.55}
+#overviewTopics .hw p{margin:10px 18px 0;line-height:1.65;overflow-wrap:anywhere}
+#overviewTopics .hw p:last-child{margin-bottom:2px}
+.overview-track{margin:12px 18px 0}
+.pr-topic>summary{padding:13px 16px 13px 20px;line-height:1.65;cursor:pointer}
+.pr-topic>summary::marker{font-size:12px}
+.admin-groups{display:flex;flex-direction:column;gap:16px;margin:18px 0}
+.admin-group{border:1px solid var(--line);border-radius:var(--r);background:var(--card);overflow:hidden}
+.admin-group>summary{cursor:pointer;list-style:none;padding:17px 20px;font-weight:650;display:flex;align-items:center;gap:12px}
+.admin-group>summary::-webkit-details-marker{display:none}
+.admin-group>summary:before{content:'▸';color:var(--accent);font-size:15px;transition:transform .15s}
+.admin-group[open]>summary:before{transform:rotate(90deg)}
+.admin-group[open]>summary{border-bottom:1px solid var(--line)}
+.admin-group-body{padding:16px 18px;display:flex;flex-direction:column;gap:14px}
+.admin-group-body>.hw{margin:0;padding-bottom:15px}
+.admin-group-body>.hw>p,.admin-group-body>.hw>label,.admin-group-body>.hw>button,.admin-group-body>.hw>div{margin-left:16px;margin-right:16px}
+.admin-group-body>.hw>header{margin-bottom:13px}
+.admin-group-body>.legacy{margin:0}
+.admin-group-body select{max-width:100%;padding:8px;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:8px}
+.pr-export{margin:18px 0}
+.pr-export-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:12px 0}
+.pr-export-fields label{display:flex;flex-direction:column;gap:7px}
+.pr-export-fields select{width:100%;min-width:0;padding:9px;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:8px}
+#prExportTaskWrap[hidden],#prExportPanel[hidden]{display:none!important}
+.tk.late .when{color:var(--c);font-weight:700}
+@media(max-width:700px){.pr-export-fields{grid-template-columns:1fr}.admin-group-body{padding:12px}.admin-group>summary{padding:14px 16px}}
