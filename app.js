@@ -12,6 +12,10 @@
 
   // 分頁
   function go(v) {
+    const current=$(".view.on")?.id;
+    if(current!==v && !window.dispatchEvent(new CustomEvent('xle-before-view-change',{
+      cancelable:true,detail:{from:current,to:v}
+    })))return;
     $$(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.view === v));
     $$(".view").forEach(s => s.classList.toggle("on", s.id === v));
     window.scrollTo({ top: 0 });
