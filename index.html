@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261019p">
+<link rel="stylesheet" href="style.css?v=20261019q">
 <link rel="stylesheet" href="progress.css?v=20261019b">
 </head>
 <body>
@@ -153,7 +153,7 @@
     <div class="hw"><header><h3>系統資訊</h3></header><p>測試站：XLeRobot-Staging・v1.4.0 測試版</p></div>
     </div></details>
 <details class="admin-group"><summary>進度回報</summary><div class="admin-group-body"><div class="hw"><header><h3>進度回報顯示設定</h3></header><label><input type="checkbox" id="progressShowIds"> 向一般組員顯示回報編號</label><p class="muted">預設關閉；管理員始終可查看編號。設定適用所有組員。</p><p id="progressShowIdsMsg" class="muted" role="status"></p></div>
-    <div class="hw"><header><h3>進度回報匯出權限</h3></header><label>允許匯出的對象<select id="prExportPermission"><option value="admin">僅管理員可匯出（預設）</option><option value="all">所有人皆可匯出</option></select></label><p class="muted">適用 PDF 與 ZIP、所有匯出範圍。權限由伺服器驗證。</p><p id="prExportPermissionMsg" class="muted" role="status"></p></div></div></details>
+    <div class="hw"><header><h3>進度回報匯出權限</h3></header><label>允許匯出的對象<select id="prExportPermission"><option value="admin">僅管理員可匯出（預設）</option><option value="all">所有人皆可匯出</option></select></label><p class="muted">適用 PDF 與 ZIP、所有匯出範圍。權限由伺服器驗證。</p><p id="prExportPermissionMsg" class="muted" role="status"></p></div><div class="hw"><header><h3>進度回報操作紀錄顯示權限</h3></header><label><input type="checkbox" id="prAuditPermission"> 允許一般組員查看進度回報操作紀錄</label><p class="muted">預設關閉；管理員始終可以查看。僅開放查看，不會開放修改或刪除。</p><p id="prAuditPermissionMsg" class="muted" role="status"></p></div></div></details>
 <details class="admin-group"><summary>分工＆時程</summary><div class="admin-group-body"><div class="hw"><header><h3>分工時程完成權限</h3></header><label><input type="checkbox" id="allowMemberCompletion"> 允許一般組員勾選工作完成</label><p class="muted">預設關閉。關閉時僅管理員可操作；切換不會改變既有完成狀態。</p><p id="memberCompletionMsg" class="muted" role="status"></p></div>
     <div class="hw"><header><h3>完成狀態操作紀錄</h3></header><button class="btn ghost" id="taskAuditRefresh" type="button">查看最近 300 筆操作紀錄</button><div id="taskAuditList" class="muted"></div></div>
     </div></details>
@@ -465,7 +465,7 @@
 <script src="purchases.js?v=20261019f"></script>
 <script src="admin-pages.js?v=20261019n"></script>
 <script src="risks-admin.js?v=20261012a"></script>
-<script src="progress.js?v=20261019p"></script>
+<script src="progress.js?v=20261019q"></script>
 <script>
 async function loadSiteInfo() {
   try {
