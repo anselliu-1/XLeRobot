@@ -14,24 +14,46 @@ class ProgressTests(unittest.TestCase):
         app.S3_ENABLED=False
         app.ADMIN_HASH=hashlib.sha256(b'test-only-key').hexdigest()
         app.init(); progress.init()
-        cls.http=app.ThreadingHTTPServer(('127.0.0.1',0),app.H)
-        cls.base='http://127.0.0.1:'+str(cls.http.server_port)
-        threading.Thread(target=cls.http.serve_forever,daemon=True).start()
+        cls.http=None
+        cls.base='http://127.0.0.1'
+        if not os.environ.get('PROGRESS_IN_PROCESS'):
+            cls.http=app.ThreadingHTTPServer(('127.0.0.1',0),app.H)
+            cls.base+=':'+str(cls.http.server_port)
+            threading.Thread(target=cls.http.serve_forever,daemon=True).start()
 
     @classmethod
     def tearDownClass(cls):
-        cls.http.shutdown();cls.http.server_close();cls.temp.cleanup()
+        if cls.http: cls.http.shutdown();cls.http.server_close()
+        cls.temp.cleanup()
 
     def req(self,path,method='GET',data=None,admin=False,headers=None):
         hdr=dict(headers or {})
         if admin: hdr['X-Admin-Key']='test-only-key'
         if isinstance(data,dict): data=json.dumps(data).encode();hdr['Content-Type']='application/json'
+        if os.environ.get('PROGRESS_IN_PROCESS'):
+            # Exercise the actual HTTP handlers without opening network sockets.
+            import io
+            from email.parser import BytesParser
+            from types import SimpleNamespace
+            h=app.H.__new__(app.H)
+            h.path=path;h.command=method;h.request_version='HTTP/1.1';h.requestline=method+' '+path+' HTTP/1.1'
+            hdr['Content-Length']=str(len(data or b''))
+            h.headers=BytesParser().parsebytes(('\r\n'.join(k+': '+v for k,v in hdr.items())+'\r\n\r\n').encode())
+            h.rfile=io.BytesIO(data or b'');h.wfile=io.BytesIO();h.connection=SimpleNamespace(settimeout=lambda n:None)
+            getattr(h,'do_'+method)()
+            head,raw=h.wfile.getvalue().split(b'\r\n\r\n',1)
+            status=int(head.split(b' ',2)[1]);headers=BytesParser().parsebytes(head.split(b'\r\n',1)[1]+b'\r\n\r\n')
+            return status,json.loads(raw) if 'application/json' in headers.get('Content-Type','') else raw,headers
         req=urllib.request.Request(self.base+path,data=data,headers=hdr,method=method)
         try: r=urllib.request.urlopen(req,timeout=60)
         except urllib.error.HTTPError as e: r=e
         with r:
             raw=r.read()
             return r.status,json.loads(raw) if 'application/json' in r.headers.get('Content-Type','') else raw,r.headers
+
+    def setUp(self):
+        with app.conn() as c:
+            c.execute("UPDATE meta SET v=? WHERE k='notify_config'",(json.dumps({'enabled':True,'mode':'instant','events':list(app.NOTIFY_EVENTS)}),))
 
     def create(self,fields=None,files=None,headers=None):
         boundary='test-progress-boundary'
@@ -132,5 +154,34 @@ class ProgressTests(unittest.TestCase):
         self.assertEqual(payloads[0]['allowed_mentions'],{'parse':[]})
         with app.conn() as c:
             self.assertTrue(c.execute('SELECT sent_at FROM progress_outbox').fetchone()[0])
+
+    def test_notification_controls(self):
+        cfg={'enabled':False,'mode':'digest','events':list(progress.EVENTS.values())}
+        self.assertEqual(self.req('/api/notifications/config','POST',cfg)[0],403)
+        self.assertEqual(self.req('/api/notifications/config','POST',dict(cfg,enabled='false'),True)[0],400)
+        self.assertEqual(self.req('/api/notifications/config','POST',cfg,True)[0],200)
+        first=self.create()[1]['id']
+        with app.conn() as c:
+            self.assertFalse(c.execute('SELECT 1 FROM progress_outbox WHERE detail LIKE ?',(f'%回報 #{first}・%',)).fetchone())
+            self.assertTrue(c.execute('SELECT 1 FROM progress_audit WHERE report_id=?',(first,)).fetchone())
+        cfg['enabled']=True;cfg['events']=['progress_add']
+        self.assertEqual(self.req('/api/notifications/config','POST',cfg,True)[0],200)
+        second=self.create()[1]['id']
+        third=self.create({'reporter':'甲','subject':'a','parent_id':str(second)})[1]['id']
+        with app.conn() as c:
+            self.assertEqual(c.execute('SELECT event FROM progress_outbox WHERE detail LIKE ?',(f'%回報 #{second}・%',)).fetchone()[0],'progress_add')
+            self.assertFalse(c.execute('SELECT 1 FROM progress_outbox WHERE detail LIKE ?',(f'%回報 #{third}・%',)).fetchone())
+        cfg['enabled']=False
+        self.req('/api/notifications/config','POST',cfg,True)
+        class StopWorker(BaseException): pass
+        def stop(_): raise StopWorker()
+        with patch.dict(os.environ,{'DISCORD_WEBHOOK_URL':'https://discord.invalid/test'}),patch.object(progress.urllib.request,'urlopen') as send,patch.object(progress.time,'sleep',stop):
+            with self.assertRaises(StopWorker): progress.worker()
+            send.assert_not_called()
+        progress.init()
+        _,saved,_=self.req('/api/notifications/config',admin=True)
+        self.assertEqual(saved,cfg,'Restart must preserve event preferences and master switch')
+        _,status,_=self.req('/api/progress/notification-status',admin=True)
+        self.assertFalse(status['enabled']);self.assertIn('recent_error',status)
 
 if __name__=='__main__': unittest.main()

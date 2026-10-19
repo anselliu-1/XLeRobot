@@ -224,7 +224,8 @@ def now_s():
     return datetime.now(TZ).strftime("%Y-%m-%d %H:%M")
 
 NOTIFY_EVENTS = {'task_add','task_edit','task_done','task_reopen','task_result','task_upload','task_delete',
-                 'buy_add','buy_edit','buy_status','buy_image','buy_delete','buy_stock','buy_owner','buy_refund'}
+                 'buy_add','buy_edit','buy_status','buy_image','buy_delete','buy_stock','buy_owner','buy_refund',
+                 'progress_add','progress_continue','progress_void','progress_file_remove'}
 IMAGE_EXT = {'.jpg','.jpeg','.png','.webp'}
 IMAGE_MAX = 10 * 1024 * 1024
 
@@ -602,7 +603,8 @@ class H(BaseHTTPRequestHandler):
         if p == '/api/notifications/config':
             if self._deny(): return
             try:
-                d=self._body(); cfg={'enabled':bool(d['enabled']), 'mode':d['mode'], 'events':d['events']}
+                d=self._body(); cfg={'enabled':d['enabled'], 'mode':d['mode'], 'events':d['events']}
+                if type(cfg['enabled']) is not bool: raise ValueError()
                 if cfg['mode'] not in ('instant','digest') or not isinstance(cfg['events'],list) or any(x not in NOTIFY_EVENTS for x in cfg['events']): raise ValueError()
             except Exception: return self._send(400,{'error':'invalid settings'})
             with LOCK, conn() as c: c.execute("INSERT OR REPLACE INTO meta(k,v) VALUES('notify_config',?)",(json.dumps(cfg),))

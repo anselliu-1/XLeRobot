@@ -142,6 +142,7 @@
     <div class="legacy-body"><p class="muted">通知透過 Railway 設定的 DISCORD_WEBHOOK_URL 傳送到 Discord 頻道。</p><p id="progressNotifyStatus" class="muted">進度回報通知狀態：載入中…</p>
     <label><input type="checkbox" id="notifyEnabled"> 啟用 Discord 通知</label>
     <p><label>寄送方式 <select id="notifyMode"><option value="instant">即時通知</option><option value="digest">10 分鐘合併通知</option></select></label></p>
+    <p class="muted">進度回報通知一律即時發送，不受「10 分鐘合併」影響。下方四個進度回報事件與其他通知共用總開關。關閉時不建立新通知，既有待送通知暫停；重新啟用後補送。</p>
     <div id="notifyEvents" class="buy-notify-grid"></div><button class="btn" id="notifySave">儲存通知設定</button><p id="notifyMsg" class="muted"></p></div></details>
 
   </section>
@@ -430,7 +431,7 @@
 <script src="data.js?v=20261007a"></script>
 <script src="app.js?v=20261007a"></script>
 <script src="tasks.js?v=20261007a"></script>
-<script src="purchases.js?v=20261019d"></script>
+<script src="purchases.js?v=20261019e"></script>
 <script src="admin-pages.js?v=20261012a"></script>
 <script src="risks-admin.js?v=20261012a"></script>
 <script src="progress.js?v=20261019d"></script>

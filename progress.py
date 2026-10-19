@@ -7,6 +7,8 @@ from datetime import datetime
 MAX = 50 * 1024 * 1024
 EXT = set(('.py .js .ts .tsx .jsx .c .cpp .h .hpp .ino .java .rs .go .sh .ps1 .yaml .yml .json .xml .html .css .md .txt .csv .log .toml .ipynb .zip .7z .rar .tar .gz .jpg .jpeg .png .gif .webp .mp4 .mov .webm .avi .pdf .doc .docx .xls .xlsx .ppt .pptx').split())
 UPLOADS = threading.BoundedSemaphore(2)
+EVENTS = {'新增回報':'progress_add','接續回報':'progress_continue',
+          '作廢回報':'progress_void','附件移除':'progress_file_remove'}
 
 def install(app):
     global A
@@ -39,15 +41,27 @@ def init():
           sent_at TEXT NOT NULL DEFAULT '', attempts INTEGER NOT NULL DEFAULT 0,
           next_try REAL NOT NULL DEFAULT 0, error TEXT NOT NULL DEFAULT '');
         ''')
+        if 'event' not in {r[1] for r in c.execute('PRAGMA table_info(progress_outbox)')}:
+            c.execute("ALTER TABLE progress_outbox ADD COLUMN event TEXT NOT NULL DEFAULT ''")
+        for label,code in EVENTS.items():
+            c.execute("UPDATE progress_outbox SET event=? WHERE event='' AND detail LIKE ?",(code,label+'｜%'))
+        if not c.execute("SELECT 1 FROM meta WHERE k='progress_notify_controls_v1'").fetchone():
+            cfg=A.notify_config(c)
+            cfg['events']=list(dict.fromkeys(cfg.get('events',[])+list(EVENTS.values())))
+            c.execute("INSERT OR REPLACE INTO meta(k,v) VALUES('notify_config',?)",(json.dumps(cfg),))
+            c.execute("INSERT INTO meta(k,v) VALUES('progress_notify_controls_v1','1')")
 
 def event(c, rid, action, actor, reason='', fid=''):
     now = stamp()
     c.execute('INSERT INTO progress_audit(report_id,action,actor,reason,file_id,created) VALUES(?,?,?,?,?,?)',
               (rid, action, actor, reason, fid, now))
+    code=EVENTS[action]
+    cfg=A.notify_config(c)
+    if not cfg.get('enabled') or code not in cfg.get('events',[]): return
     r = c.execute('SELECT * FROM progress_reports WHERE id=?',(rid,)).fetchone()
     detail = f'{action}｜回報 #{rid}・v{r["version"]}\n{r["subject"]}\n回報人：{r["reporter"]}\n時間：{now}\n'
     detail += ('原因：'+reason if reason else r['content'][:900])
-    c.execute('INSERT INTO progress_outbox(id,detail,created) VALUES(?,?,?)', (uuid.uuid4().hex, detail[:1500], now))
+    c.execute('INSERT INTO progress_outbox(id,detail,created,event) VALUES(?,?,?,?)', (uuid.uuid4().hex, detail[:1500], now, code))
 
 def worker():
     while True:
@@ -62,9 +76,15 @@ def worker():
             webhook = os.environ.get('DISCORD_WEBHOOK_URL','').strip()
             if webhook:
                 with A.LOCK, A.conn() as c:
-                    items = [dict(r) for r in c.execute('SELECT * FROM progress_outbox WHERE sent_at=\'\' AND next_try<=? ORDER BY created LIMIT 5',(time.time(),))]
+                    cfg=A.notify_config(c)
+                    enabled=[code for code in EVENTS.values() if cfg.get('enabled') and code in cfg.get('events',[])]
+                    slots=','.join('?' for _ in enabled)
+                    items = [dict(r) for r in c.execute(f"SELECT * FROM progress_outbox WHERE sent_at='' AND next_try<=? AND event IN ({slots}) ORDER BY created LIMIT 5",(time.time(),*enabled))] if enabled else []
                 for item in items:
                     try:
+                        with A.LOCK,A.conn() as c:
+                            cfg=A.notify_config(c)
+                        if not cfg.get('enabled') or item['event'] not in cfg.get('events',[]): continue
                         domain = os.environ.get('RAILWAY_PUBLIC_DOMAIN','').strip()
                         link = '\nhttps://'+domain+'/#progress' if domain else ''
                         body = json.dumps({'content': ('XLeRobot｜'+item['detail']+link)[:1900], 'allowed_mentions':{'parse':[]}},ensure_ascii=False).encode()
@@ -258,7 +278,8 @@ def route(h,method):
             if not A.is_admin(h): h._send(403,{'error':'需要管理員'})
             else:
                 with A.LOCK,A.conn() as c:
-                    h._send(200,{'configured':bool(os.environ.get('DISCORD_WEBHOOK_URL')), 'pending':c.execute("SELECT count(*) FROM progress_outbox WHERE sent_at='' ").fetchone()[0], 'failed':c.execute("SELECT count(*) FROM progress_outbox WHERE sent_at='' AND attempts>0").fetchone()[0]})
+                    recent=c.execute("SELECT error FROM progress_outbox WHERE sent_at='' AND error<>'' ORDER BY created DESC LIMIT 1").fetchone()
+                    h._send(200,{'configured':bool(os.environ.get('DISCORD_WEBHOOK_URL')), 'enabled':bool(A.notify_config(c).get('enabled')), 'pending':c.execute("SELECT count(*) FROM progress_outbox WHERE sent_at='' ").fetchone()[0], 'failed':c.execute("SELECT count(*) FROM progress_outbox WHERE sent_at='' AND attempts>0").fetchone()[0], 'recent_error':recent['error'] if recent else ''})
         else: h._send(405,{'error':'回報送出後不可修改；請接續建立新版本'})
     except (ValueError,UnicodeError) as exc:
         h.close_connection=True; h._send(400,{'error':str(exc)})
