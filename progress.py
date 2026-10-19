@@ -1,0 +1,268 @@
+"""Immutable progress reports; isolated tables, object prefix and durable outbox."""
+import json, os, re, uuid, time, threading, urllib.request, urllib.parse
+from email.parser import BytesParser
+from email.policy import default
+from datetime import datetime
+
+MAX = 50 * 1024 * 1024
+EXT = set(('.py .js .ts .tsx .jsx .c .cpp .h .hpp .ino .java .rs .go .sh .ps1 .yaml .yml .json .xml .html .css .md .txt .csv .log .toml .ipynb .zip .7z .rar .tar .gz .jpg .jpeg .png .gif .webp .mp4 .mov .webm .avi .pdf .doc .docx .xls .xlsx .ppt .pptx').split())
+UPLOADS = threading.BoundedSemaphore(2)
+
+def install(app):
+    global A
+    A = app
+
+def stamp():
+    return datetime.now(A.TZ).isoformat(timespec='microseconds')
+
+def init():
+    with A.LOCK, A.conn() as c:
+        c.executescript('''
+        CREATE TABLE IF NOT EXISTS progress_reports(
+          id INTEGER PRIMARY KEY AUTOINCREMENT, reporter TEXT NOT NULL,
+          subject TEXT NOT NULL, content TEXT NOT NULL, created TEXT NOT NULL,
+          parent_id INTEGER REFERENCES progress_reports(id), root_id INTEGER,
+          version INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'valid',
+          void_reason TEXT NOT NULL DEFAULT '', void_at TEXT NOT NULL DEFAULT '');
+        CREATE INDEX IF NOT EXISTS progress_root ON progress_reports(root_id,version);
+        CREATE TABLE IF NOT EXISTS progress_files(
+          id TEXT PRIMARY KEY, report_id INTEGER NOT NULL REFERENCES progress_reports(id),
+          name TEXT NOT NULL, size INTEGER NOT NULL, object_key TEXT NOT NULL,
+          storage TEXT NOT NULL, removed_at TEXT NOT NULL DEFAULT '', reason TEXT NOT NULL DEFAULT '',
+          cleared_at TEXT NOT NULL DEFAULT '');
+        CREATE TABLE IF NOT EXISTS progress_audit(
+          id INTEGER PRIMARY KEY AUTOINCREMENT, report_id INTEGER NOT NULL,
+          action TEXT NOT NULL, actor TEXT NOT NULL, reason TEXT NOT NULL,
+          file_id TEXT NOT NULL DEFAULT '', created TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS progress_outbox(
+          id TEXT PRIMARY KEY, detail TEXT NOT NULL, created TEXT NOT NULL,
+          sent_at TEXT NOT NULL DEFAULT '', attempts INTEGER NOT NULL DEFAULT 0,
+          next_try REAL NOT NULL DEFAULT 0, error TEXT NOT NULL DEFAULT '');
+        ''')
+
+def event(c, rid, action, actor, reason='', fid=''):
+    now = stamp()
+    c.execute('INSERT INTO progress_audit(report_id,action,actor,reason,file_id,created) VALUES(?,?,?,?,?,?)',
+              (rid, action, actor, reason, fid, now))
+    r = c.execute('SELECT * FROM progress_reports WHERE id=?',(rid,)).fetchone()
+    detail = f'{action}｜回報 #{rid}・v{r["version"]}\n{r["subject"]}\n回報人：{r["reporter"]}\n時間：{now}\n'
+    detail += ('原因：'+reason if reason else r['content'][:900])
+    c.execute('INSERT INTO progress_outbox(id,detail,created) VALUES(?,?,?)', (uuid.uuid4().hex, detail[:1500], now))
+
+def worker():
+    while True:
+        try:
+            with A.LOCK, A.conn() as c:
+                removals=[dict(r) for r in c.execute("SELECT * FROM progress_files WHERE removed_at<>'' AND cleared_at='' LIMIT 5")]
+            for f in removals:
+                try:
+                    clear_file(f)
+                except Exception as exc:
+                    print('progress removal retry:',type(exc).__name__,flush=True)
+            webhook = os.environ.get('DISCORD_WEBHOOK_URL','').strip()
+            if webhook:
+                with A.LOCK, A.conn() as c:
+                    items = [dict(r) for r in c.execute('SELECT * FROM progress_outbox WHERE sent_at=\'\' AND next_try<=? ORDER BY created LIMIT 5',(time.time(),))]
+                for item in items:
+                    try:
+                        domain = os.environ.get('RAILWAY_PUBLIC_DOMAIN','').strip()
+                        link = '\nhttps://'+domain+'/#progress' if domain else ''
+                        body = json.dumps({'content': ('XLeRobot｜'+item['detail']+link)[:1900], 'allowed_mentions':{'parse':[]}},ensure_ascii=False).encode()
+                        req = urllib.request.Request(webhook, data=body, headers={'Content-Type':'application/json','User-Agent':'XLeRobot-Progress'}, method='POST')
+                        with urllib.request.urlopen(req,timeout=15) as response:
+                            if response.status not in (200,204): raise RuntimeError('Discord rejected')
+                        with A.LOCK, A.conn() as c:
+                            c.execute('UPDATE progress_outbox SET sent_at=?,error=\'\' WHERE id=?',(stamp(),item['id']))
+                        print('progress notification delivered:',item['id'],flush=True)
+                    except Exception as exc:
+                        with A.LOCK, A.conn() as c:
+                            c.execute('UPDATE progress_outbox SET attempts=attempts+1,next_try=?,error=? WHERE id=?',
+                                      (time.time()+min(300,5*2**min(item['attempts'],6)),type(exc).__name__,item['id']))
+        except Exception as exc:
+            print('progress notifier:',type(exc).__name__,flush=True)
+        time.sleep(5)
+
+def text_field(value, limit, label, required=False):
+    if not isinstance(value,str) or len(value)>limit: raise ValueError(label+'格式或長度不正確')
+    value=value.strip()
+    if required and not value: raise ValueError('請填寫'+label)
+    if '\x00' in value: raise ValueError('無效文字')
+    return value
+
+def read_form(h):
+    try: n=int(h.headers.get('Content-Length','0'))
+    except ValueError: raise ValueError('無效檔案長度')
+    if h.headers.get('Transfer-Encoding') or n<=0 or n>MAX+512*1024:
+        raise ValueError('每筆附件合計上限 50MB')
+    typ=h.headers.get('Content-Type','')
+    if not typ.startswith('multipart/form-data;') or len(typ)>300: raise ValueError('請使用表單上傳')
+    h.connection.settimeout(30)
+    raw=h.rfile.read(n)
+    if len(raw)!=n: raise ValueError('上傳未完成')
+    # Bound MIME part count before constructing the MIME tree.
+    boundary=re.search(r'boundary=(?:"([^"]+)"|([^;\s]+))',typ)
+    if not boundary: raise ValueError('無效表單邊界')
+    delimiter=(boundary.group(1) or boundary.group(2)).encode('ascii')
+    if not 1<=len(delimiter)<=70 or raw.count(b'\r\n--'+delimiter)>25: raise ValueError('表單欄位或附件過多')
+    msg=BytesParser(policy=default).parsebytes(('Content-Type: '+typ+'\r\nMIME-Version: 1.0\r\n\r\n').encode()+raw)
+    if not msg.is_multipart() or msg.defects: raise ValueError('無效上傳表單')
+    fields={}; files=[]; total=0
+    for part in msg.iter_parts():
+        if part.is_multipart() or part.defects: raise ValueError('無效附件')
+        key=part.get_param('name',header='content-disposition')
+        data=part.get_payload(decode=True) or b''
+        name=part.get_filename()
+        if name is not None:
+            if not name and not data: continue
+            if key!='files' or len(files)>=20: raise ValueError('最多 20 個附件')
+            name=name.replace('\\','/').split('/')[-1]
+            if not name or len(name)>180 or any(ord(ch)<32 or ord(ch)==127 for ch in name): raise ValueError('無效檔名')
+            if os.path.splitext(name)[1].lower() not in EXT: raise ValueError('不支援的附件類型：'+name)
+            total+=len(data)
+            if total>MAX: raise ValueError('每筆附件合計上限 50MB')
+            files.append((name,data))
+        else:
+            if key not in ('reporter','subject','content','parent_id') or key in fields or len(data)>45000: raise ValueError('無效表單欄位')
+            fields[key]=data.decode('utf-8',errors='strict')
+    return fields,files
+
+def list_reports(h):
+    query=urllib.parse.parse_qs(urllib.parse.urlsplit(h.path).query)
+    q=query.get('q',[''])[0].strip().casefold()[:200]
+    who=query.get('reporter',[''])[0]; status=query.get('status',['all'])[0]
+    with A.LOCK, A.conn() as c:
+        reports=[dict(r) for r in c.execute('SELECT * FROM progress_reports ORDER BY id')]
+        for r in reports:
+            r['files']=[{**dict(f),'url':'/api/progress-files/'+f['id'] if not f['removed_at'] else None} for f in c.execute('SELECT id,name,size,removed_at,reason FROM progress_files WHERE report_id=?',(r['id'],))]
+        people=sorted({r['reporter'] for r in reports})
+        matched=[r['id'] for r in reports if (not who or r['reporter']==who) and (status=='all' or r['status']==status) and (not q or q in '\n'.join([r['reporter'],r['subject'],r['content']]+[f['name'] for f in r['files']]).casefold())]
+        # Include full histories for matching topics, even if earlier versions do not match.
+        roots={r['root_id'] for r in reports if r['id'] in matched}
+        items=[r for r in reports if r['root_id'] in roots]
+        return h._send(200,{'items':items,'matched_ids':matched,'reporters':people,'admin':A.is_admin(h)})
+
+def download(h,fid):
+    with A.LOCK, A.conn() as c:
+        f=c.execute('SELECT * FROM progress_files WHERE id=?',(fid,)).fetchone()
+    if not f or f['removed_at']: return h._send(404,{'error':'附件不存在或已移除'})
+    if f['storage']=='bucket': data,_=A.s3_request('GET',f['object_key'])
+    else:
+        with open(os.path.join(A.UPLOAD_DIR, f['object_key']), 'rb') as stream: data=stream.read()
+    h.send_response(200)
+    h.send_header('Content-Type','application/octet-stream')
+    h.send_header('X-Content-Type-Options','nosniff')
+    h.send_header('Content-Security-Policy',"sandbox; default-src 'none'")
+    h.send_header('Content-Disposition',"attachment; filename=download; filename*=UTF-8''"+urllib.parse.quote(f['name'],safe=''))
+    h.send_header('Cache-Control','no-store')
+    h.send_header('Content-Length',str(len(data))); h.end_headers(); h.wfile.write(data)
+
+def create(h):
+    if not UPLOADS.acquire(blocking=False): return h._send(429,{'error':'目前上傳忙碌，請稍後再試'})
+    stored=[]
+    try:
+        fields,files=read_form(h)
+        reporter=text_field(fields.get('reporter',''),80,'回報人',True)
+        subject=text_field(fields.get('subject',''),200,'主題',True)
+        content=text_field(fields.get('content',''),10000,'內容')
+        parent=fields.get('parent_id','').strip()
+        if parent and not re.fullmatch(r'[1-9][0-9]{0,9}',parent): raise ValueError('無效接續回報')
+        with A.LOCK, A.conn() as c:
+            c.execute('BEGIN IMMEDIATE')
+            old=c.execute('SELECT * FROM progress_reports WHERE id=?',(parent,)).fetchone() if parent else None
+            if parent and (not old or old['status']!='valid'): raise ValueError('只能接續有效回報')
+            root=old['root_id'] if old else None
+            version=c.execute('SELECT COALESCE(MAX(version),0)+1 FROM progress_reports WHERE root_id=?',(root,)).fetchone()[0] if old else 1
+            if old: subject=old['subject']
+            rid=c.execute('INSERT INTO progress_reports(reporter,subject,content,created,parent_id,root_id,version) VALUES(?,?,?,?,?,?,?)',
+                          (reporter,subject,content,stamp(),int(parent) if parent else None,root,version)).lastrowid
+            if not old: c.execute('UPDATE progress_reports SET root_id=? WHERE id=?',(rid,rid))
+            for name,data in files:
+                fid=uuid.uuid4().hex
+                key='progress/staging/'+fid
+                storage='bucket' if A.S3_ENABLED else 'local'
+                # Track before PUT so ambiguous network failures are also cleaned up.
+                stored.append((storage,key))
+                if storage=='bucket': A.s3_request('PUT',key,data,'application/octet-stream')
+                else:
+                    path=os.path.join(A.UPLOAD_DIR,key); os.makedirs(os.path.dirname(path),exist_ok=True)
+                    with open(path,'xb') as stream: stream.write(data)
+                c.execute('INSERT INTO progress_files(id,report_id,name,size,object_key,storage) VALUES(?,?,?,?,?,?)',(fid,rid,name,len(data),key,storage))
+            event(c,rid,'接續回報' if old else '新增回報','回報人（自行填寫）：'+reporter)
+        stored=[]
+        return h._send(201,{'id':rid,'version':version})
+    finally:
+        for storage,key in stored:
+            try:
+                if storage=='bucket': A.s3_request('DELETE',key)
+                else: os.remove(os.path.join(A.UPLOAD_DIR,key))
+            except Exception: print('progress orphan cleanup required:',key,flush=True)
+        UPLOADS.release()
+
+def clear_file(f):
+    try:
+        if f['storage']=='bucket': A.s3_request('DELETE',f['object_key'])
+        else: os.remove(os.path.join(A.UPLOAD_DIR,f['object_key']))
+    except FileNotFoundError: pass
+    with A.LOCK,A.conn() as c:
+        c.execute('UPDATE progress_files SET cleared_at=? WHERE id=?',(stamp(),f['id']))
+
+def moderate(h,rid,action):
+    if not A.is_admin(h): return h._send(403,{'error':'需要已驗證的管理員'})
+    d=h._body()
+    if not isinstance(d,dict): raise ValueError('無效操作')
+    reason=text_field(d.get('reason',''),1000,'原因',True)
+    with A.LOCK, A.conn() as c:
+        c.execute('BEGIN IMMEDIATE')
+        r=c.execute('SELECT * FROM progress_reports WHERE id=?',(rid,)).fetchone()
+        if not r: return h._send(404,{'error':'找不到回報'})
+        if action=='void':
+            if r['status']!='valid': return h._send(409,{'error':'回報已作廢'})
+            c.execute('UPDATE progress_reports SET status=\'void\',void_reason=?,void_at=? WHERE id=?',(reason,stamp(),rid))
+            event(c,rid,'作廢回報','已驗證管理員',reason)
+        else:
+            fid=d.get('file_id')
+            if not isinstance(fid,str): raise ValueError('請選擇附件')
+            f=c.execute('SELECT * FROM progress_files WHERE id=? AND report_id=?',(fid,rid)).fetchone()
+            if not f or f['removed_at']: return h._send(404,{'error':'附件不存在或已移除'})
+            if r['status']!='void': raise ValueError('請先作廢回報，再移除附件')
+            # Commit a durable removal intention first; retries finish an interrupted deletion.
+            c.execute('UPDATE progress_files SET removed_at=?,reason=? WHERE id=?',(stamp(),reason,fid))
+            event(c,rid,'附件移除','已驗證管理員',reason+'；檔名：'+f['name'],fid)
+    if action=='remove-file':
+        # Public download is disabled before storage deletion. Retained metadata remains searchable.
+        try:
+            clear_file(f)
+        except Exception:
+            return h._send(202,{'warning':'附件已停用下載，實體清除待重試'})
+    return h._send(200,{'ok':True})
+
+def route(h,method):
+    p=h._path()
+    if not (p=='/api/progress' or p.startswith('/api/progress/') or p.startswith('/api/progress-files/')): return False
+    try:
+        if method in ('POST','PATCH','DELETE'):
+            origin=h.headers.get('Origin')
+            if origin and urllib.parse.urlsplit(origin).netloc!=h.headers.get('Host'):
+                h._send(403,{'error':'不允許跨網站操作'}); return True
+        if method=='GET' and p=='/api/progress': list_reports(h)
+        elif method=='GET' and re.fullmatch('/api/progress-files/[a-f0-9]{32}',p): download(h,p.rsplit('/',1)[1])
+        elif method=='POST' and p=='/api/progress': create(h)
+        elif method=='POST' and re.fullmatch(r'/api/progress/[1-9][0-9]*/(void|remove-file)',p):
+            _,_,_,rid,action=p.split('/'); moderate(h,int(rid),action)
+        elif method=='GET' and re.fullmatch(r'/api/progress/[1-9][0-9]*/audit',p):
+            if not A.is_admin(h): h._send(403,{'error':'需要管理員'})
+            else:
+                with A.LOCK,A.conn() as c:
+                    h._send(200,{'items':[dict(r) for r in c.execute('SELECT * FROM progress_audit WHERE report_id=? ORDER BY id',(int(p.split('/')[3]),))]})
+        elif method=='GET' and p=='/api/progress/notification-status':
+            if not A.is_admin(h): h._send(403,{'error':'需要管理員'})
+            else:
+                with A.LOCK,A.conn() as c:
+                    h._send(200,{'configured':bool(os.environ.get('DISCORD_WEBHOOK_URL')), 'pending':c.execute("SELECT count(*) FROM progress_outbox WHERE sent_at='' ").fetchone()[0], 'failed':c.execute("SELECT count(*) FROM progress_outbox WHERE sent_at='' AND attempts>0").fetchone()[0]})
+        else: h._send(405,{'error':'回報送出後不可修改；請接續建立新版本'})
+    except (ValueError,UnicodeError) as exc:
+        h.close_connection=True; h._send(400,{'error':str(exc)})
+    except Exception as exc:
+        print('progress request failed:',type(exc).__name__,flush=True)
+        h.close_connection=True; h._send(503,{'error':'儲存服務暫時無法使用，請重新整理確認後再試'})
+    return True

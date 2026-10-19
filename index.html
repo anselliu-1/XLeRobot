@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css?v=20261007a">
+<link rel="stylesheet" href="progress.css?v=20261019a">
 </head>
 <body>
 <a class="skip" href="#main">跳至主要內容</a>
@@ -23,6 +24,7 @@
   </div>
   <nav class="tabs" aria-label="主要分頁">
     <button data-view="overview" class="on">總覽</button>
+    <button data-view="progress">進度回報</button>
     <button data-view="plan">分工&amp;時程</button>
     <button data-view="purchases">採購清單</button>
     <button data-view="meet">討論重點</button>
@@ -43,6 +45,30 @@
 </header>
 
 <main id="main">
+  <section class="view" id="progress">
+    <div class="hero"><div><h1>進度回報</h1><p>留下每次實作、測試與發現，接續累積完整版本歷程。</p></div></div>
+    <form id="prForm" class="blk">
+      <h2 id="prFormTitle">新增回報</h2>
+      <p id="prParentHint" class="muted"></p>
+      <input type="hidden" name="parent_id">
+      <div class="pr-fields"><label>回報人（必填）<input name="reporter" required maxlength="80" autocomplete="name"></label>
+      <label>主題（必填）<input name="subject" required maxlength="200"></label></div>
+      <label>回報內容<textarea name="content" rows="5" maxlength="10000" placeholder="這次做了什麼、測試結果、遇到的問題與下一步…"></textarea></label>
+      <label>多附件（每筆合計最多 50MB、20 個）<input name="files" type="file" multiple></label>
+      <p class="muted">支援程式、壓縮檔、圖片、影片與文件；附件只供下載。時間由伺服器記錄（台灣 UTC+8）。送出後不可修改，請確認內容。接續回報不會複製舊附件。</p>
+      <div class="pr-actions"><button class="btn" type="submit">確認送出回報</button><button class="btn ghost" id="prCancel" type="button" hidden>取消接續</button><span id="prUploadSize" class="muted"></span></div>
+      <p id="prMessage" role="status" aria-live="polite"></p>
+    </form>
+    <div class="blk pr-filters">
+      <label>搜尋<input id="prSearch" type="search" placeholder="姓名、主題、內容或附件檔名"></label>
+      <label>回報人<select id="prReporter"><option value="">全部姓名</option></select></label>
+      <label>狀態<select id="prStatus"><option value="all">全部狀態</option><option value="valid">有效</option><option value="void">已作廢</option></select></label>
+      <label>日期排序<select id="prSort"><option value="desc">遞減（最新優先）</option><option value="asc">遞增（最早優先）</option></select></label>
+      <label>檢視<select id="prView"><option value="topic">依主題／完整版本歷程</option><option value="time">依時間</option></select></label>
+      <button type="button" class="btn ghost" id="prRefresh">重新整理</button>
+    </div>
+    <p id="prCount" role="status"></p><p id="prNotify" class="muted"></p><div id="prItems"></div>
+  </section>
   <!-- 總覽：新方向優先，舊版內容收合 -->
   <section class="view on" id="overview">
     <div class="hero"><div>
@@ -407,6 +433,7 @@
 <script src="purchases.js?v=20261012c"></script>
 <script src="admin-pages.js?v=20261012a"></script>
 <script src="risks-admin.js?v=20261012a"></script>
+<script src="progress.js?v=20261019a"></script>
 <script>
 async function loadSiteInfo() {
   try {

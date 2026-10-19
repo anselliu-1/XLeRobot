@@ -3,6 +3,8 @@ import json, os, sqlite3, threading, time, uuid, re, mimetypes, urllib.request, 
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from datetime import datetime, timezone, timedelta
 import hashlib, hmac
+import progress, sys
+progress.install(sys.modules[__name__])
 
 DB = os.environ.get("TASK_DB", os.path.join(os.path.dirname(os.path.abspath(__file__)), "data.db"))
 PORT = int(os.environ.get("PORT", "8000"))
@@ -82,8 +84,15 @@ SEED = [
     ("中", "確認電瓶購買店家、發票品項與核銷方式", "採購清單"),
 ]
 
+class ClosingConnection(sqlite3.Connection):
+    def __exit__(self, *args):
+        try:
+            return super().__exit__(*args)
+        finally:
+            self.close()
+
 def conn():
-    c = sqlite3.connect(DB, timeout=10)
+    c = sqlite3.connect(DB, timeout=10, factory=ClosingConnection)
     c.row_factory = sqlite3.Row
     return c
 
@@ -412,6 +421,7 @@ class H(BaseHTTPRequestHandler):
     def do_OPTIONS(self): self._send(204, {})
 
     def do_GET(self):
+        if progress.route(self, "GET"): return
         p = self._path()
         if p == "/api/health": return self._send(200, {"ok": True})
         
@@ -514,7 +524,7 @@ class H(BaseHTTPRequestHandler):
             rel = "/index.html"
         rel = os.path.normpath(rel.lstrip("/"))
         target = os.path.abspath(os.path.join(root, rel))
-        if target.startswith(root + os.sep) and os.path.isfile(target):
+        if rel in {"index.html", "style.css", "app.js", "data.js", "tasks.js", "purchases.js", "admin-pages.js", "risks-admin.js", "progress.js", "progress.css", "arm-battery-wiring.png", "team-wiring.png", "wiring-1-lipo.png", "wiring-2-shared-u2d2.png", "wiring-3-powerbank-only.png", "README_v1.3.0.md"} and target.startswith(root + os.sep) and os.path.isfile(target):
             try:
                 with open(target, "rb") as f:
                     b = f.read()
@@ -536,6 +546,7 @@ class H(BaseHTTPRequestHandler):
         self._send(403, {"error": "owner only"}); return True
 
     def do_POST(self):
+        if progress.route(self, "POST"): return
         p = self._path()
         if p == '/api/admin/files/zip':
             if self._deny():return
@@ -732,6 +743,7 @@ class H(BaseHTTPRequestHandler):
         return {'owner':owner if admin else old['owner'],'refund':refund if (admin or perms.get('refund_edit')) else old['refund']}
 
     def do_PATCH(self):
+        if progress.route(self, "PATCH"): return
         p = self._path()
         rm=re.fullmatch(r'/api/project-risks/([a-f0-9]+)',p)
         if rm:
@@ -804,6 +816,7 @@ class H(BaseHTTPRequestHandler):
             r = bump(c); return self._send(200, {"rev": r, "tasks": rows(c, admin)})
 
     def do_DELETE(self):
+        if progress.route(self, "DELETE"): return
         if self._deny(): return
         p = self._path()
         rm=re.fullmatch(r'/api/project-risks/([a-f0-9]+)',p)
@@ -882,6 +895,8 @@ class H(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     init()
+    progress.init()
+    threading.Thread(target=progress.worker, daemon=True).start()
     print(f"listening on {PORT}, db={DB}, attachment_storage={'bucket' if S3_ENABLED else 'local'}", flush=True)
     threading.Thread(target=mail_worker, daemon=True).start()
     ThreadingHTTPServer(("0.0.0.0", PORT), H).serve_forever()

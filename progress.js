@@ -1,0 +1,109 @@
+(() => {
+  const $ = s => document.querySelector(s), form = $('#prForm');
+  const esc = s => String(s ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const headers = () => ({'X-Admin-Key':localStorage.getItem('xle-admin') || ''});
+  let items = [], matched = new Set(), admin = false, request = 0, timer;
+  const date = s => new Intl.DateTimeFormat('zh-TW',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date(s))+'（台灣）';
+  async function api(url,options={}) {
+    const response = await fetch(url,{cache:'no-store',...options});
+    const data = await response.json();
+    if(!response.ok) throw Error(data.error || '操作失敗');
+    return data;
+  }
+  function card(r) {
+    return `<article class="blk pr-report ${r.status==='void'?'pr-void':''}" id="report-${r.id}">
+      <header><h3>#${r.id} · v${r.version}　${esc(r.subject)}</h3><span class="tag">${r.status==='valid'?'有效':'已作廢'}</span></header>
+      <p class="muted">${esc(r.reporter)} · ${esc(date(r.created))}${r.parent_id?' · 接續 #'+r.parent_id:''}</p>
+      <div class="pr-content">${esc(r.content) || '（無文字內容）'}</div>
+      ${r.status==='void'?`<p class="pr-reason">作廢原因：${esc(r.void_reason)}<br>${esc(date(r.void_at))}</p>`:''}
+      <ul class="pr-files">${r.files.map(f=>`<li>${f.removed_at?`<span>${esc(f.name)}（已移除：${esc(f.reason)}）</span>`:`<a href="${f.url}">${esc(f.name)}</a> · ${(f.size/1024/1024).toFixed(2)} MB${admin && r.status==='void'?` <button class="btn ghost" data-remove="${f.id}" data-report="${r.id}">移除附件</button>`:''}`}</li>`).join('')}</ul>
+      <div class="pr-actions">${r.status==='valid'?`<button class="btn ghost" data-continue="${r.id}">接續此回報</button>`:''}
+      ${admin?`${r.status==='valid'?`<button class="btn ghost" data-void="${r.id}">作廢（填原因）</button>`:''}<button class="btn ghost" data-audit="${r.id}">操作紀錄</button>`:''}</div>
+      <div class="pr-audit" data-audit-list="${r.id}"></div></article>`;
+  }
+  function render() {
+    const asc=$('#prSort').value==='asc', sorter=(a,b)=>(asc?1:-1)*(a.id-b.id);
+    const shown=items.filter(r=>matched.has(r.id));
+    $('#prCount').textContent=`符合 ${shown.length} 筆回報；主題檢視會保留完整版本歷程。`;
+    if($('#prView').value==='time') $('#prItems').innerHTML=shown.sort(sorter).map(card).join('');
+    else {
+      const groups=new Map();
+      items.forEach(r=>{if(!groups.has(r.root_id))groups.set(r.root_id,[]);groups.get(r.root_id).push(r);});
+      $('#prItems').innerHTML=[...groups.values()].sort((a,b)=>sorter(a.at(-1),b.at(-1))).map(g=>{
+        const latest=g.at(-1);
+        return `<details class="pr-topic" open><summary>${esc(latest.subject)} <span class="muted">· ${g.length} 個版本 · 最近 ${esc(date(latest.created))}</span></summary>${g.sort(sorter).map(card).join('')}</details>`;
+      }).join('');
+    }
+    if(!shown.length) $('#prItems').innerHTML='<p class="muted">沒有符合條件的回報。</p>';
+  }
+  async function load() {
+    const seq=++request;
+    try {
+      const query=new URLSearchParams({q:$('#prSearch').value,reporter:$('#prReporter').value,status:$('#prStatus').value});
+      const d=await api('/api/progress?'+query,{headers:headers()});
+      if(seq!==request)return;
+      items=d.items; matched=new Set(d.matched_ids); admin=d.admin;
+      const selected=$('#prReporter').value;
+      $('#prReporter').innerHTML='<option value="">全部姓名</option>'+d.reporters.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');
+      $('#prReporter').value=selected; render();
+      $('#prNotify').textContent='';
+      if(admin){const n=await api('/api/progress/notification-status',{headers:headers()});
+        $('#prNotify').textContent=`Discord：${n.configured?'已設定':'尚未設定'} · 待送 ${n.pending} · 重試中 ${n.failed}`;}
+    } catch(e) {$('#prCount').textContent='讀取失敗：'+e.message;}
+  }
+  function cancel() {
+    form.elements.parent_id.value=''; form.elements.subject.readOnly=false;
+    $('#prFormTitle').textContent='新增回報'; $('#prParentHint').textContent=''; $('#prCancel').hidden=true;
+  }
+  $('#prCancel').onclick=cancel;
+  form.elements.files.onchange=()=>{
+    const files=[...form.elements.files.files],size=files.reduce((n,f)=>n+f.size,0);
+    $('#prUploadSize').textContent=`${files.length} 個附件，共 ${(size/1024/1024).toFixed(2)} / 50 MB`;
+  };
+  form.onsubmit=async e=>{
+    e.preventDefault(); const button=form.querySelector('[type=submit]');
+    const files=[...form.elements.files.files];
+    if(files.length>20 || files.reduce((n,f)=>n+f.size,0)>50*1024*1024){$('#prMessage').textContent='每筆最多 20 個附件，合計上限 50MB';return;}
+    if(!confirm('確認送出？送出後不可修改，可接續建立新版本。'))return;
+    const body=new FormData(form); button.disabled=true; $('#prMessage').textContent='上傳並儲存中，請勿重複送出…';
+    try {
+      const d=await api('/api/progress',{method:'POST',body});
+      const reporter=form.elements.reporter.value;form.reset();form.elements.reporter.value=reporter;cancel();
+      $('#prUploadSize').textContent=''; $('#prMessage').textContent=`已送出 #${d.id} · v${d.version}`; await load();
+    } catch(e) {$('#prMessage').textContent=e.message+'；若連線中斷，請先重新整理確認是否已建立，避免重複送出。';}
+    finally {button.disabled=false;}
+  };
+  $('#prItems').onclick=async e=>{
+    const b=e.target.closest('button'); if(!b)return;
+    if(b.dataset.continue){
+      const r=items.find(x=>x.id===Number(b.dataset.continue));
+      if(!r || r.status!=='valid')return;
+      form.elements.parent_id.value=r.id; form.elements.subject.value=r.subject;form.elements.subject.readOnly=true;
+      form.elements.content.value='';form.elements.files.value='';$('#prUploadSize').textContent='';
+      $('#prFormTitle').textContent='接續回報 #'+r.id;$('#prParentHint').textContent='同一主題下新增版本，保留接續來源；舊附件不會帶入。';
+      $('#prCancel').hidden=false;form.scrollIntoView({behavior:'smooth'});form.elements.reporter.focus();return;
+    }
+    b.disabled=true;
+    try {
+      if(b.dataset.audit){
+        const d=await api('/api/progress/'+b.dataset.audit+'/audit',{headers:headers()});
+        document.querySelector(`[data-audit-list="${b.dataset.audit}"]`).innerHTML=d.items.map(a=>`<p>${esc(date(a.created))} · ${esc(a.action)} · ${esc(a.actor)} ${esc(a.reason)}</p>`).join('');
+      } else if(b.dataset.void || b.dataset.remove){
+        const reason=prompt(b.dataset.remove?'移除附件的原因（檔案將永久移除，保留紀錄）':'作廢原因（必填，保留原始回報）');
+        if(!reason || !reason.trim())return;
+        if(b.dataset.remove && !confirm('確認永久移除此附件？此操作無法復原。'))return;
+        const rid=b.dataset.void || b.dataset.report;
+        const d=await api('/api/progress/'+rid+'/'+(b.dataset.void?'void':'remove-file'),{method:'POST',headers:{...headers(),'Content-Type':'application/json'},body:JSON.stringify({reason,file_id:b.dataset.remove})});
+        if(d.warning)alert(d.warning); await load();
+      }
+    } catch(e){alert(e.message);} finally {b.disabled=false;}
+  };
+  $('#prSearch').oninput=()=>{clearTimeout(timer);timer=setTimeout(load,250);};
+  ['prReporter','prStatus'].forEach(id=>$('#'+id).onchange=load);
+  ['prSort','prView'].forEach(id=>$('#'+id).onchange=render);
+  $('#prRefresh').onclick=load;
+  $('[data-view="progress"]').addEventListener('click',load);
+  window.addEventListener('xle-admin-change',load);
+  window.addEventListener('storage',e=>{if(e.key==='xle-admin')load();});
+  if(location.hash==='#progress') $('[data-view="progress"]').click();
+})();
