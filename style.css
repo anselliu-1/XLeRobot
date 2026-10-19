@@ -17,12 +17,18 @@ button,select,input{font:inherit;color:inherit}
 .top{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:18px;padding:10px 24px;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
 .brand{display:flex;align-items:center;gap:10px;min-width:max-content}
 .brand strong{display:block;font-size:15px;line-height:1.2}.brand small{color:var(--muted);font-size:12px}
-.tabs{display:flex;gap:2px;overflow-x:auto;flex:1;scrollbar-width:none}
-.tabs::-webkit-scrollbar{display:none}
-.tabs button{background:none;border:0;padding:8px 12px;border-radius:8px;cursor:pointer;color:var(--muted);white-space:nowrap;font-size:14px}
+.tabs-shell{display:flex;align-items:center;gap:4px;flex:1;min-width:0}
+.tabs{display:flex;gap:2px;overflow-x:auto;flex:1;min-width:0;scrollbar-width:thin;scrollbar-color:var(--line) transparent;overscroll-behavior-x:contain}
+.tabs::-webkit-scrollbar{height:5px}
+.tabs::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
+.tabs button{flex:0 0 auto;background:none;border:0;padding:8px 12px;border-radius:8px;cursor:pointer;color:var(--muted);white-space:nowrap;font-size:14px}
+.tab-scroll{flex:0 0 32px;display:grid;place-items:center;width:32px;height:36px;border:1px solid var(--line);border-radius:8px;background:var(--card);cursor:pointer}
+.tab-scroll[hidden]{display:none}
+.tab-scroll:disabled{opacity:.35;cursor:default}
+.tab-scroll:focus-visible,.tabs button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .tabs button:hover{color:var(--ink);background:var(--surface)}
 .tabs button.on{color:var(--ink);background:var(--card);box-shadow:inset 0 -2px 0 var(--accent)}
-.theme{background:var(--card);border:1px solid var(--line);border-radius:8px;width:36px;height:36px;display:grid;place-items:center;cursor:pointer}
+.theme{flex:0 0 36px;background:var(--card);border:1px solid var(--line);border-radius:8px;width:36px;height:36px;display:grid;place-items:center;cursor:pointer}
 main{max-width:1180px;margin:0 auto;padding:28px 24px 80px}
 .view{display:none}.view.on{display:block;animation:fade .25s ease}
 @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1}}
@@ -170,7 +176,8 @@ kbd{font-family:var(--m);font-size:12px;background:var(--surface);border:1px sol
   .spec:nth-child(odd){border-right:0}
   .ex{grid-template-columns:1fr;gap:4px}
   .top{flex-wrap:wrap;padding:10px 16px}
-  .tabs{order:3;flex-basis:100%}
+  .tabs-shell{order:3;flex-basis:100%;width:100%}
+  .theme{margin-left:auto}
   main{padding:20px 16px 60px}
   .two{grid-template-columns:1fr}
   .drawer{padding:20px 18px 50px}
@@ -436,3 +443,187 @@ body.tk-admin .tk{grid-template-columns:84px 1.8fr minmax(168px,1.1fr) 122px 50p
 .buy-notify-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin:16px 0}
 .buy-notify-grid label{display:flex;gap:7px;align-items:center}
 #buyItems .hw{padding:16px}#buyItems .bar{flex-wrap:wrap}
+
+/* v1.4 測試站：工作回報欄位、總覽及共用網站內對話框 */
+.tk .resultbox{display:flex;flex-direction:column;align-items:stretch;gap:8px;min-width:0}
+.tk .resultbox .btn{display:block;width:100%;max-width:100%;white-space:normal;overflow-wrap:anywhere;text-align:center;line-height:1.35}
+.tk .resultbox small{display:block;overflow-wrap:anywhere;line-height:1.5;color:var(--muted)}
+.tk .resultbox details{min-width:0;overflow-wrap:anywhere}
+.overview-track{height:12px;border-radius:20px;background:var(--surface);border:1px solid var(--line);overflow:hidden}
+.overview-track i{display:block;height:100%;width:0;background:var(--a);transition:width .25s}
+.overview-number{font-size:28px;color:var(--ink)}
+.xle-modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:10000;display:grid;place-items:center;padding:18px}
+.xle-modal{width:min(100%,480px);max-height:90vh;overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.35);color:var(--ink)}
+.xle-modal h3{margin:0 0 12px;font-size:20px}
+.xle-modal-message{white-space:pre-line;overflow-wrap:anywhere;line-height:1.65;color:var(--muted)}
+.xle-modal-input{display:block;width:100%;box-sizing:border-box;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:10px;margin:12px 0;font:inherit}
+.xle-modal-ack{display:flex;gap:10px;align-items:flex-start;margin:12px 0;line-height:1.5}
+.xle-modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px;flex-wrap:wrap}
+.xle-modal-danger{background:var(--c);border-color:var(--c);color:#fff}
+.xle-modal button:disabled{opacity:.5;cursor:not-allowed}
+
+/* 測試站：收合新增回報與已隱藏的舊版規劃 */
+#prForm[hidden],#prNew[hidden],.legacy[hidden]{display:none!important}
+#prNew{margin:0 0 14px}
+
+/* 2026-10-19 staging: overview breathing room, report headings, admin settings */
+#overviewStats .hw{padding-bottom:16px}
+#overviewStats .overview-number{display:block;padding:14px 18px 3px;line-height:1.35}
+#overviewStats .hw header{padding:13px 18px}
+#overviewProgressBar{display:block}
+#overviewProgressLabel{display:block;margin:10px 18px 17px}
+#overviewStats + .hw{padding-bottom:12px}
+#overviewTopics .hw{padding-bottom:15px;min-width:0}
+#overviewTopics .hw header{padding:13px 18px}
+#overviewTopics .hw header h3{overflow-wrap:anywhere;line-height:1.55}
+#overviewTopics .hw p{margin:10px 18px 0;line-height:1.65;overflow-wrap:anywhere}
+#overviewTopics .hw p:last-child{margin-bottom:2px}
+.overview-track{margin:12px 18px 0}
+.pr-topic>summary{padding:13px 16px 13px 20px;line-height:1.65;cursor:pointer}
+.pr-topic>summary::marker{font-size:12px}
+.admin-groups{display:flex;flex-direction:column;gap:16px;margin:18px 0}
+.admin-group{border:1px solid var(--line);border-radius:var(--r);background:var(--card);overflow:hidden}
+.admin-group>summary{cursor:pointer;list-style:none;padding:17px 20px;font-weight:650;display:flex;align-items:center;gap:12px}
+.admin-group>summary::-webkit-details-marker{display:none}
+.admin-group>summary:before{content:'▸';color:var(--accent);font-size:15px;transition:transform .15s}
+.admin-group[open]>summary:before{transform:rotate(90deg)}
+.admin-group[open]>summary{border-bottom:1px solid var(--line)}
+.admin-group-body{padding:16px 18px;display:flex;flex-direction:column;gap:14px}
+.admin-group-body>.hw{margin:0;padding-bottom:15px}
+.admin-group-body>.hw>p,.admin-group-body>.hw>label,.admin-group-body>.hw>button,.admin-group-body>.hw>div{margin-left:16px;margin-right:16px}
+.admin-group-body>.hw>header{margin-bottom:13px}
+.admin-group-body>.legacy{margin:0}
+.admin-group-body select{max-width:100%;padding:8px;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:8px}
+.pr-export{margin:18px 0}
+.pr-export-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:12px 0}
+.pr-export-fields label{display:flex;flex-direction:column;gap:7px}
+.pr-export-fields select{width:100%;min-width:0;padding:9px;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:8px}
+#prExportTaskWrap[hidden],#prExportPanel[hidden]{display:none!important}
+.tk.late .when{color:var(--c);font-weight:700}
+@media(max-width:700px){.pr-export-fields{grid-template-columns:1fr}.admin-group-body{padding:12px}.admin-group>summary{padding:14px 16px}}
+
+/* Staging follow-up: overview flow card text padding and modal select chevron */
+#overview > .hwgrid:first-of-type .hw > p{margin:0;padding:16px 18px 18px;line-height:1.65;box-sizing:border-box}
+#overview > .hwgrid:first-of-type .hw > header{padding:14px 18px}
+.xle-modal select.xle-modal-input{appearance:none;-webkit-appearance:none;padding-right:44px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23c5cbd1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-size:16px 16px;background-position:right 18px center}
+
+/* Staging: unified progress card layout and reliable flow-card padding */
+#overview .overview-flow>.hw{overflow:hidden}
+#overview .overview-flow>.hw>header{padding:14px 18px!important}
+#overview .overview-flow>.hw>p{display:block!important;margin:0!important;padding:16px 18px 18px!important;line-height:1.65!important;box-sizing:border-box!important}
+.pr-top-actions{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:0 0 16px}
+.pr-top-actions .btn{margin:0}
+.pr-trash-panel{margin:16px 0 24px}
+.pr-section-title{display:flex;justify-content:space-between;gap:12px;align-items:center}
+.pr-trash-item{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;border-top:1px solid var(--line);padding:16px 0}
+.pr-trash-item p{margin:6px 0}
+.pr-trash-item .pr-actions{flex-shrink:0}
+.pr-report{padding:0!important;overflow:hidden;margin:14px 0}
+.pr-report-head{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;padding:20px 22px}
+.pr-report-head h3{margin:0 0 9px;font-size:17px;overflow-wrap:anywhere}
+.pr-report-head .muted{margin:5px 0;line-height:1.55}
+.pr-report-section{padding:17px 22px;border-top:1px solid var(--line)}
+.pr-report-section h4{margin:0 0 12px;font-size:14px}
+.pr-report-section .pr-content{padding:0;margin:0;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7}
+.pr-report-section .pr-files{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px}
+.pr-report-section .pr-files li{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 10px;background:var(--surface);border-radius:8px;overflow-wrap:anywhere}
+.pr-report-section .pr-files a{overflow-wrap:anywhere}
+.pr-report-section .pr-files button{margin-left:auto}
+.pr-report-section .pr-actions{display:flex;gap:8px;flex-wrap:wrap}
+.pr-danger-action{color:var(--c)!important;border-color:var(--c)!important}
+.pr-upload-hint{margin:0 0 12px;line-height:1.6}
+#progress select{appearance:none;-webkit-appearance:none;padding-right:36px!important;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23c5cbd1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-size:16px;background-position:right 16px center}
+.xle-modal-message{white-space:pre-wrap;max-height:45vh;overflow-y:auto}
+@media(max-width:700px){.pr-report-head,.pr-report-section{padding:14px 16px}.pr-trash-item{flex-direction:column}.pr-report-head{gap:8px}}
+
+#prTrashPanel[hidden],#prTrashOpen[hidden]{display:none!important}
+
+/* Staging: restore reliable native dropdown arrows instead of broken CSS images */
+#progress select,.xle-modal select.xle-modal-input,#fileadmin select{
+  appearance:auto!important;-webkit-appearance:menulist!important;
+  background-image:none!important;background-color:var(--surface)!important;
+  color:var(--ink)!important;padding:9px 18px 9px 12px!important;
+  text-overflow:ellipsis;min-width:0;
+}
+#progress select option,.xle-modal select option,#fileadmin select option{padding:6px 14px;background:var(--surface);color:var(--ink)}
+#prTrashOpen{display:inline-flex;align-items:center;justify-content:center;gap:7px;line-height:1.4;min-height:38px}
+#prTrashOpen svg{flex:none;display:block;width:16px;height:16px}
+#prTrashCount{display:inline-block}
+#fileadmin .bar input,#fileadmin .bar select{background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:9px 12px;min-height:40px}
+#fileadmin .file-selection-tools{display:flex;align-items:center;flex-wrap:wrap;gap:16px;margin:12px 0}
+#fileadmin .file-select-all{display:inline-flex;align-items:center;gap:8px;cursor:pointer}
+#fileadmin .file-select-all input{accent-color:var(--accent)}
+#fileadmin .file-selection-tools .muted{margin:0}
+#fileadmin .file-groups{display:flex;flex-direction:column;gap:14px;margin-top:14px}
+#fileadmin .file-group{border:1px solid var(--line);border-radius:var(--r);background:var(--card);overflow:hidden}
+#fileadmin .file-group>summary{cursor:pointer;display:flex;align-items:center;gap:12px;padding:16px 20px;list-style:none;flex-wrap:wrap}
+#fileadmin .file-group>summary::-webkit-details-marker{display:none}
+#fileadmin .file-group>summary:before{content:'▸';color:var(--accent);font-size:18px;transition:transform .15s}
+#fileadmin .file-group[open]>summary:before{transform:rotate(90deg)}
+#fileadmin .file-group[open]>summary{border-bottom:1px solid var(--line)}
+#fileadmin .file-group-title{font-weight:700}
+#fileadmin .file-group-desc{font-size:13px;color:var(--muted)}
+#fileadmin .file-group-count{margin-left:auto;font-size:13px;color:var(--muted);white-space:nowrap}
+#fileadmin .file-group-body{padding:16px 18px;display:flex;flex-direction:column;gap:12px}
+#fileadmin .file-group-body>.muted{margin:0}
+#fileadmin .file-entry{border-top:1px solid var(--line);margin:0}
+#fileadmin .file-entry>header{padding:12px 16px}
+#fileadmin .file-entry-body{padding:14px 16px 16px}
+#fileadmin .file-entry-body>p{margin:0 0 12px;overflow-wrap:anywhere;line-height:1.6}
+#fileadmin .file-entry-actions{display:flex;align-items:center;flex-wrap:wrap;gap:12px}
+#fileadmin .file-entry-actions label{display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+#fileadmin .file-entry-actions a{color:var(--accent);text-decoration:none}
+@media(max-width:700px){#fileadmin .file-group>summary{padding:13px 15px}#fileadmin .file-group-body{padding:12px}#fileadmin .file-group-desc{flex-basis:100%;order:3}}
+
+/* Staging 2026-10-19: overview matches task row completion/overdue colors */
+#overviewTopics .overview-topic.overview-done{background:var(--a-bg);border-color:color-mix(in srgb,var(--a) 24%,var(--line))}
+#overviewTopics .overview-topic.overview-late{background:var(--c-bg);border-color:color-mix(in srgb,var(--c) 24%,var(--line))}
+#overviewTopics .overview-topic.overview-done header,#overviewTopics .overview-topic.overview-late header{background:transparent}
+#fileadmin .file-group-select{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:12px 14px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+#fileadmin .file-group-select label{display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-weight:600}
+#fileadmin .file-group-select .muted{margin:0}
+/* Two report buttons share the same baseline and height */
+#progress .pr-top-actions{align-items:stretch;gap:12px}
+#progress .pr-top-actions>.btn{height:42px;min-height:42px;margin:0;display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:8px 14px;line-height:1.3}
+/* Custom select: fully controlled chevron position and expanded option padding */
+#progress .pr-select-wrap{position:relative;min-width:0;width:100%}
+#progress .pr-select-wrap>select{position:absolute!important;inset:0!important;width:1px!important;height:1px!important;opacity:0!important;pointer-events:none!important;overflow:hidden!important;padding:0!important;border:0!important}
+#progress .pr-select-trigger{width:100%;height:43px;min-width:0;display:flex;align-items:center;gap:12px;justify-content:space-between;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:9px 18px 9px 14px;font:inherit;font-weight:600;cursor:pointer;text-align:left}
+#progress .pr-select-trigger:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#progress .pr-select-label{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1}
+#progress .pr-select-arrow{display:block;flex:none;font-size:22px;line-height:1;width:15px;text-align:center;transform:translateY(-2px)}
+.pr-select-popup{position:fixed;z-index:1000;overflow:auto;overscroll-behavior:contain;padding:6px;background:var(--surface);border:1px solid var(--line);border-radius:9px;box-shadow:0 12px 32px #0007}
+.pr-select-popup[hidden]{display:none!important}
+.pr-select-option{display:block;width:100%;text-align:left;border:0;border-radius:5px;background:transparent;color:var(--ink);font:inherit;padding:10px 16px;line-height:1.55;cursor:pointer;white-space:normal;overflow-wrap:anywhere}
+.pr-select-option:hover,.pr-select-option:focus-visible{background:color-mix(in srgb,var(--accent) 18%,var(--surface));outline:none}
+.pr-select-option[aria-selected=true]{background:color-mix(in srgb,var(--accent) 24%,var(--surface));font-weight:700}
+#progress .pr-filters label{min-width:160px}
+#progress .pr-filters label:first-child{min-width:220px}
+@media(max-width:700px){#progress .pr-filters label{min-width:0}#progress .pr-filters label:first-child{min-width:0}}
+
+/* Staging: equal-height overview cards in each grid row */
+#overviewTopics{align-items:stretch;grid-auto-rows:1fr}
+#overviewTopics .overview-topic{height:100%;min-height:165px;display:flex;flex-direction:column}
+#overviewTopics .overview-topic header{min-height:54px;display:flex;align-items:center}
+#overviewTopics .overview-topic header h3{margin:0}
+#overviewTopics .overview-topic p:last-child{margin-top:auto;padding-top:8px}
+/* SVG dropdown chevrons stay centered independent of font metrics */
+#progress .pr-select-arrow{height:18px;width:18px;display:flex;align-items:center;justify-content:center;transform:none;font-size:inherit;line-height:1}
+#progress .pr-select-arrow svg{display:block;width:16px;height:16px}
+/* Center report-history disclosure icon vertically */
+#progress .pr-topic>summary{list-style:none;display:flex;align-items:center;gap:10px;min-height:52px;padding:13px 18px}
+#progress .pr-topic>summary::-webkit-details-marker{display:none}
+#progress .pr-topic>summary::before{content:'';display:block;flex:0 0 8px;width:8px;height:8px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(-45deg);transition:transform .15s;align-self:center}
+#progress .pr-topic[open]>summary::before{transform:rotate(45deg)}
+#progress .pr-topic>summary .muted{min-width:0}
+
+/* Risk card inner spacing */
+#riskItems>.hw{padding-bottom:16px}
+#riskItems>.hw>p{margin:12px 18px;line-height:1.65;overflow-wrap:anywhere}
+#riskItems>.hw>.bar{margin:14px 18px 0;gap:10px}
+#riskItems>.hw>header{padding:14px 18px}
+#riskItems>.hw>header h3{margin:0;min-width:0;overflow-wrap:anywhere}
+/* File filter chevron: consistent inset and thin-line SVG */
+#fileadmin #fileType{appearance:none!important;-webkit-appearance:none!important;background-color:var(--surface)!important;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23c5cbd1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")!important;background-repeat:no-repeat!important;background-size:16px 16px!important;background-position:right 16px center!important;padding:9px 42px 9px 14px!important;text-overflow:ellipsis}
+#fileadmin .file-group-select input{accent-color:var(--accent)}
+

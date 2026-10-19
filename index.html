@@ -7,7 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261007a">
+<link rel="stylesheet" href="style.css?v=20261019nav1">
+<link rel="stylesheet" href="progress.css?v=20261019b">
 </head>
 <body>
 <a class="skip" href="#main">跳至主要內容</a>
@@ -21,8 +22,11 @@
     </svg>
     <div><strong>XLeRobot 專題管理</strong><small>商品選取與自動交付・研究紀錄</small></div>
   </div>
-  <nav class="tabs" aria-label="主要分頁">
+  <div class="tabs-shell">
+  <button type="button" class="tab-scroll" id="tabPrev" aria-label="向左捲動分頁" aria-controls="mainTabs" hidden><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg></button>
+  <nav class="tabs" id="mainTabs" aria-label="主要分頁">
     <button data-view="overview" class="on">總覽</button>
+    <button data-view="progress">進度回報</button>
     <button data-view="plan">分工&amp;時程</button>
     <button data-view="purchases">採購清單</button>
     <button data-view="meet">討論重點</button>
@@ -30,19 +34,59 @@
     <button data-view="power">供電方案</button>
     <button data-view="risks">困難與展出</button>
     <button data-view="prof">評審提問與答辯準備</button>
-    <button data-view="rules">歸還守則</button>
+    <button data-view="rules" data-admin-tab hidden>歸還守則</button>
     <button data-view="fileadmin" data-admin-tab hidden>檔案管理</button>
     <button data-view="adminsettings" data-admin-tab hidden>管理員設定</button>
 
     <button data-view="pkg">專題安裝包</button>
     <button data-view="src">依據</button>
   </nav>
+  <button type="button" class="tab-scroll" id="tabNext" aria-label="向右捲動分頁" aria-controls="mainTabs" hidden><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
+  </div>
   <button class="theme" id="theme" aria-label="切換明暗模式">
     <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
   </button>
 </header>
 
 <main id="main">
+  <section class="view" id="progress">
+    <div class="hero"><div><h1>進度回報</h1><p>留下每次實作、測試與發現，接續累積完整版本歷程。</p></div></div>
+    <div class="pr-top-actions"><button type="button" class="btn" id="prNew">＋ 新增回報</button><button type="button" class="btn ghost" id="prTrashOpen" hidden><svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2m3 0-1 14H6L5 6m5 4v7m4-7v7"/></svg><span>垃圾桶</span><span id="prTrashCount"></span></button></div><section class="blk pr-trash-panel" id="prTrashPanel" hidden><div class="pr-section-title"><h2>垃圾桶（僅管理員）</h2><button type="button" class="btn ghost" id="prTrashClose">關閉</button></div><p class="muted">回報移入垃圾桶後，不顯示於一般列表、統計與匯出。可還原；永久刪除無法復原。</p><div id="prTrashItems"></div><details><summary>永久刪除紀錄（僅管理員）</summary><div id="prDeletedAudit"></div></details></section>
+    <form id="prForm" class="blk" hidden>
+      <h2 id="prFormTitle">新增回報</h2>
+      <p id="prParentHint" class="muted"></p>
+      <input type="hidden" name="parent_id">
+      <div class="pr-fields"><label>回報人（必填）<input name="reporter" required maxlength="80" autocomplete="name"></label>
+      <label>主題（必填）<input name="subject" required maxlength="200"></label></div>
+      <label>關聯工作項目（選填）<select name="task_id" id="prTask"><option value="">不關聯工作項目</option></select></label>
+      <label>回報內容（必填）<textarea name="content" required rows="5" maxlength="10000" placeholder="這次做了什麼、測試結果、遇到的問題與下一步…"></textarea></label>
+      <label>上傳附件（選填）<input name="files" type="file" multiple></label><p class="muted pr-upload-hint">每次回報最多可上傳 <strong>20 個檔案</strong>，所有附件的<strong>總大小不得超過 50 MB</strong>。</p>
+      <p class="muted">支援程式、壓縮檔、圖片、影片與文件；附件只供下載。時間由伺服器記錄（台灣 UTC+8）。送出後不可修改，請確認內容。接續回報不會複製舊附件。</p>
+      <div class="pr-actions"><button class="btn" type="submit">確認送出回報</button><button class="btn ghost" id="prCancel" type="button">取消</button><span id="prUploadSize" class="muted"></span></div>
+      <p id="prMessage" role="status" aria-live="polite"></p>
+    </form>
+    <div class="blk pr-filters">
+      <label>搜尋<input id="prSearch" type="search" placeholder="姓名、主題、內容或附件檔名"></label>
+      <label>關聯工作<select id="prTaskFilter"><option value="">全部工作</option></select></label>
+      <label>回報人<select id="prReporter"><option value="">全部姓名</option></select></label>
+      <label>狀態<select id="prStatus"><option value="all">全部狀態</option><option value="valid">有效</option><option value="void">已作廢</option></select></label>
+      <label>日期排序<select id="prSort"><option value="desc">遞減（最新優先）</option><option value="asc">遞增（最早優先）</option></select></label>
+      <label>檢視<select id="prView"><option value="topic">依主題／完整版本歷程</option><option value="time">依時間</option></select></label>
+
+    </div>
+    <div class="blk pr-export" id="prExportPanel" hidden>
+      <h2>匯出進度回報</h2>
+      <div class="pr-export-fields">
+        <label>匯出範圍<select id="prExportScope"><option value="all">全部回報</option><option value="filtered">目前篩選結果</option><option value="task">指定工作主題</option></select></label>
+        <label id="prExportTaskWrap" hidden>指定工作<select id="prExportTask"></select></label>
+        <label>檔案格式<select id="prExportFormat"><option value="zip">ZIP（PDF＋原始附件）</option><option value="pdf">僅 PDF</option></select></label>
+      </div>
+      <button type="button" class="btn" id="prExportGo">匯出回報</button>
+      <p class="muted">ZIP 保留原始附件格式；已永久移除的附件僅記錄移除資訊。單筆回報可從回報卡片匯出。</p>
+      <p id="prExportMsg" class="muted" role="status"></p>
+    </div>
+    <div class="sync" id="prSync" role="status" aria-live="off"><i></i><span>連線中…</span></div><p id="prCount" role="status"></p><div id="prItems"></div>
+  </section>
   <!-- 總覽：新方向優先，舊版內容收合 -->
   <section class="view on" id="overview">
     <div class="hero"><div>
@@ -53,15 +97,16 @@
     <div><span>配置</span><b>單臂／雙臂尚待評估</b></div><div><span>車體</span><b>高度、配重、舵機承載待確認</b></div>
     <div><span>注意</span><b>規劃方向，不代表系統已完成</b></div></div></div>
     <h2 class="sec">展示操作流程（規劃）</h2>
-    <div class="hwgrid"><article class="hw"><header><h3>① 選擇商品</h3></header><p>到訪者透過 UI 選擇商品。</p></article>
+    <div class="hwgrid overview-flow"><article class="hw"><header><h3>① 選擇商品</h3></header><p>到訪者透過 UI 選擇商品。</p></article>
     <article class="hw"><header><h3>② 前往貨架</h3></header><p>車體移動至指定貨架前。</p></article>
     <article class="hw"><header><h3>③ 視覺辨識與夾取</h3></header><p>攝影機辨識目標，機械手臂取物。</p></article>
     <article class="hw"><header><h3>④ 商品交付</h3></header><p>車體前往交付區，手臂交付商品。</p></article></div>
-    <h2 class="sec">近期工作</h2><div class="hwgrid">
-    <article class="hw"><header><h3>10/17 前｜展示配置示意圖</h3></header><p>標示展示現場物品分布與擺放方式。</p></article>
-    <article class="hw"><header><h3>10/17 前｜操作流程圖</h3></header><p>呈現選物、移動、辨識、夾取與交付。</p></article>
-    <article class="hw"><header><h3>待排程｜採購清單</h3></header><p>整理規格、價格與購買管道，負責人尚未指定。</p></article></div>
-    <details class="legacy"><summary>歷史規劃與舊版總覽（2026-10-05 以前）</summary><div class="legacy-body">
+    <h2 class="sec">專題整體進度</h2>
+    <p class="muted">完成比例以工作主題的已完成狀態計算，進度回報數量不代表完成百分比。</p>
+    <div class="hwgrid" id="overviewStats"><article class="hw"><p class="muted">載入整體進度中…</p></article></div>
+    <article class="hw" style="margin-top:14px"><header><h3>工作主題完成比例</h3></header><div class="overview-track"><i id="overviewProgressBar"></i></div><p id="overviewProgressLabel" class="muted">讀取中…</p></article>
+    <h3 class="sec">各工作主題進度</h3><div class="hwgrid" id="overviewTopics"><p class="muted">讀取中…</p></div>
+    <details class="legacy" hidden><summary>歷史規劃與舊版總覽（2026-10-05 以前）</summary><div class="legacy-body">
     <h2 class="sec">目前暫定研究方向</h2>
     <article class="plan dircard">
       <div class="meta"><span class="t">暫定方向</span><span>依 2026-10-05 專題討論</span></div>
@@ -107,23 +152,39 @@
   <section class="view" id="adminsettings">
     <h2 class="sec first">管理員設定</h2>
     <p class="muted">此頁僅管理員登入後顯示；設定資料由後端驗證權限。</p>
-    <div class="hw"><header><h3>管理員登入狀態</h3></header><p>管理者模式已啟用。可在「分工 & 時程」登出。</p><button class="btn ghost" id="adminSettingsLogout">管理員登出</button></div>
-    <div class="hw"><header><h3>系統資訊</h3></header><p>測試站：XLeRobot-Staging・v1.3.0 測試版</p></div>
-    <details class="legacy" id="purchasePermissionsPanel" hidden><summary>管理員｜報銷權限設定</summary><div class="legacy-body">
+<div class="admin-groups">
+<details class="admin-group"><summary>系統與管理員</summary><div class="admin-group-body"><div class="hw"><header><h3>管理員登入狀態</h3></header><p>管理者模式已啟用。可在「分工 & 時程」登出。</p><button class="btn ghost" id="adminSettingsLogout">管理員登出</button></div>
+    <div class="hw"><header><h3>系統資訊</h3></header><p>測試站：XLeRobot-Staging・v1.4.0 測試版</p></div>
+    </div></details>
+<details class="admin-group"><summary>進度回報</summary><div class="admin-group-body"><div class="hw"><header><h3>進度回報顯示設定</h3></header><label><input type="checkbox" id="progressShowIds"> 向一般組員顯示回報編號</label><p class="muted">預設關閉；管理員始終可查看編號。設定適用所有組員。</p><p id="progressShowIdsMsg" class="muted" role="status"></p></div>
+    <div class="hw"><header><h3>進度回報匯出權限</h3></header><label>允許匯出的對象<select id="prExportPermission"><option value="admin">僅管理員可匯出（預設）</option><option value="all">所有人皆可匯出</option></select></label><p class="muted">適用 PDF 與 ZIP、所有匯出範圍。權限由伺服器驗證。</p><p id="prExportPermissionMsg" class="muted" role="status"></p></div><div class="hw"><header><h3>進度回報操作紀錄顯示權限</h3></header><label><input type="checkbox" id="prAuditPermission"> 允許一般組員查看進度回報操作紀錄</label><p class="muted">預設關閉；管理員始終可以查看。僅開放查看，不會開放修改或刪除。</p><p id="prAuditPermissionMsg" class="muted" role="status"></p></div></div></details>
+<details class="admin-group"><summary>分工＆時程</summary><div class="admin-group-body"><div class="hw"><header><h3>分工時程完成權限</h3></header><label><input type="checkbox" id="allowMemberCompletion"> 允許一般組員勾選工作完成</label><p class="muted">預設關閉。關閉時僅管理員可操作；切換不會改變既有完成狀態。</p><p id="memberCompletionMsg" class="muted" role="status"></p></div>
+    <div class="hw"><header><h3>完成狀態操作紀錄</h3></header><button class="btn ghost" id="taskAuditRefresh" type="button">查看最近 300 筆操作紀錄</button><div id="taskAuditList" class="muted"></div></div>
+    </div></details>
+<details class="admin-group"><summary>資料與備份</summary><div class="admin-group-body"><div class="hw"><header><h3>完整資料備份</h3></header>
+      <p>一鍵下載 ZIP：包含進度回報、分工時程、採購清單、風險與設定、操作紀錄，以及目前仍保留的附件、商品圖片和報銷憑證。</p>
+      <p class="muted">也包含資料庫快照、可讀取的 JSON、檔案核對清單與網站程式。已永久移除的檔案無法備份；雲端憑證與管理員金鑰不包含在內。打包期間請保留此頁，完成後請將 ZIP 儲存到電腦。</p>
+      <button class="btn" id="fullBackupDownload">一鍵備份全部資料與檔案（ZIP）</button><p id="lastBackupTime" class="muted">上次成功備份時間：載入中…</p><p id="fullBackupMsg" class="muted" role="status"></p>
+    </div>
+    </div></details>
+<details class="admin-group"><summary>報銷與通知</summary><div class="admin-group-body"><details class="legacy" id="purchasePermissionsPanel"><summary>管理員｜報銷權限設定</summary><div class="legacy-body">
     <label><input type="checkbox" id="refundView"> 允許組員查看報銷狀態</label><p><label><input type="checkbox" id="refundEdit"> 允許組員修改報銷狀態（需先允許查看）</label></p>
     <button class="btn" id="purchasePermSave">儲存權限設定</button><p class="muted" id="purchasePermMsg"></p></div></details>
-    <details class="legacy" id="notifyPanel" hidden><summary>管理員｜Discord 通知設定</summary>
-    <div class="legacy-body"><p class="muted">通知透過 Railway 設定的 DISCORD_WEBHOOK_URL 傳送到 Discord 頻道。</p>
+    <details class="legacy" id="notifyPanel"><summary>管理員｜Discord 通知設定</summary>
+    <div class="legacy-body"><p class="muted">通知透過 Railway 設定的 DISCORD_WEBHOOK_URL 傳送到 Discord 頻道。</p><p id="progressNotifyStatus" class="muted">進度回報通知狀態：載入中…</p>
     <label><input type="checkbox" id="notifyEnabled"> 啟用 Discord 通知</label>
     <p><label>寄送方式 <select id="notifyMode"><option value="instant">即時通知</option><option value="digest">10 分鐘合併通知</option></select></label></p>
+    <p class="muted">進度回報通知一律即時發送，不受「10 分鐘合併」影響。進度回報事件與其他通知共用總開關，包含恢復有效。關閉時不建立新通知，既有待送通知暫停；重新啟用後補送。</p>
     <div id="notifyEvents" class="buy-notify-grid"></div><button class="btn" id="notifySave">儲存通知設定</button><p id="notifyMsg" class="muted"></p></div></details>
 
+</div></details>
+</div>
   </section>
   <!-- 檔案管理：後端提供管理員專用清單 -->
   <section class="view" id="fileadmin">
-    <h2 class="sec first">檔案管理</h2><p class="muted">集中查看分工附件、商品圖片及報銷憑證。僅管理員可存取。</p>
-    <div class="bar"><input id="fileSearch" placeholder="搜尋檔名、任務或商品"><select id="fileType"><option value="all">全部類型</option><option value="task">分工附件</option><option value="image">商品圖片</option><option value="receipt">報銷憑證</option></select><button class="btn ghost" id="fileRefresh">重新整理</button><button class="btn" id="fileZip">下載勾選檔案 ZIP</button></div>
-    <p id="fileMsg" class="muted"></p><div id="fileItems"></div>
+    <h2 class="sec first">檔案管理</h2><p class="muted">集中查看歷史分工附件、進度回報附件、商品圖片及報銷憑證。僅管理員可存取。</p>
+    <div class="bar"><input id="fileSearch" placeholder="搜尋檔名、回報主題、回報人、工作或商品"><select id="fileType"><option value="all">全部類型</option><option value="task">分工附件</option><option value="progress">進度回報附件</option><option value="image">商品圖片</option><option value="receipt">報銷憑證</option></select><button class="btn ghost" id="fileRefresh">重新整理</button><button class="btn" id="fileZip">下載勾選檔案 ZIP</button></div>
+    <div class="file-selection-tools"><label class="file-select-all"><input type="checkbox" id="fileSelectAll"> <span>全選目前篩選結果</span></label><span class="muted" id="fileSelectedCount">已選取 0 個檔案</span></div><p id="fileMsg" class="muted"></p><div id="fileItems" class="file-groups"></div>
   </section>
   <!-- 討論重點 -->
   <section class="view" id="meet">
@@ -278,7 +339,7 @@
   <!-- 分工&時程 -->
   <section class="view" id="plan">
     <h2 class="sec first">分工 &amp; 時程</h2>
-    <p class="muted">全組共用同一份清單，所有人的畫面約 3 秒內同步。做完工作時請勾選「回報完成」，系統會自動記下日期與時間；並於成果欄填寫量測數據或文件連結。</p>
+    <p class="muted">全組共用工作主題與目標，管理員可設定完成權限；各階段成果與新附件請統一至「進度回報」新增。</p>
     <div class="sync" id="tkSync"><i></i><span>連線中…</span></div>
 
     <div class="tkstats" id="tkStats"></div>
@@ -288,7 +349,7 @@
       <div class="f-who"><span>負責者（最多 4 人）</span><div class="w4"><input id="fWho" list="whoList" placeholder="負責者 1" aria-label="負責者 1"><input id="fWho2" list="whoList" placeholder="負責者 2" aria-label="負責者 2"><input id="fWho3" list="whoList" placeholder="負責者 3" aria-label="負責者 3"><input id="fWho4" list="whoList" placeholder="負責者 4" aria-label="負責者 4"></div></div>
       <label><span>截止</span><input id="fDue" type="date"></label>
       <label><span>優先級</span><select id="fPri"><option>高</option><option selected>中</option><option>低</option></select></label>
-      <label class="f-note"><span>備註（僅組長可編輯）</span><input id="fNote" placeholder="選填"></label>
+      <label class="f-note"><span>目標（僅管理員可編輯）</span><input id="fNote" placeholder="請填寫預計達成的成果或驗收條件"></label>
       <button class="btn primary" type="submit">新增工作</button>
     </form>
     <datalist id="whoList"></datalist>
@@ -407,12 +468,16 @@
   </aside>
 </div>
 
+<script src="modal.js?v=20261019n"></script>
 <script src="data.js?v=20261007a"></script>
-<script src="app.js?v=20261007a"></script>
-<script src="tasks.js?v=20261007a"></script>
-<script src="purchases.js?v=20261012c"></script>
-<script src="admin-pages.js?v=20261012a"></script>
+<script src="app.js?v=20261019g"></script>
+<script src="nav-scroll.js?v=20261019nav1"></script>
+<script src="tasks.js?v=20261019m"></script>
+<script src="admin-files.js?v=20261019fix1"></script>
+<script src="purchases.js?v=20261019fix1"></script>
+<script src="admin-pages.js?v=20261019fix1"></script>
 <script src="risks-admin.js?v=20261012a"></script>
+<script src="progress.js?v=20261019fix1"></script>
 <script>
 async function loadSiteInfo() {
   try {
@@ -780,3 +845,5 @@ loadSiteInfo();
 
 </script></body>
 </html>
+
+

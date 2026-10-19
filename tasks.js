@@ -34,7 +34,27 @@
   const people = w => String(w || "").split(/[、,，;；\/]+/).map(x => x.trim()).filter(Boolean);
   const joinP = arr => [...new Set(arr.map(x => x.trim()).filter(Boolean))].slice(0, 4).join("、");
   const norm = t => ({ ...t, attachments: Array.isArray(t.attachments) ? t.attachments : [], who: t.who || "", due: t.due || "", done_date: t.done_date || "", note: t.note || "", result: t.result || "", member_done_at: t.member_done_at || "" });
-  function apply(d) { if (d && Array.isArray(d.tasks)) { tasks = d.tasks.map(norm); rev = d.rev; } }
+  function apply(d) { if (d && Array.isArray(d.tasks)) { tasks = d.tasks.map(norm); rev = d.rev; const toggle=$("#allowMemberCompletion"); if(toggle && tasks.length) toggle.checked=!!tasks[0].member_completion_allowed; } }
+  const completionToggle=$("#allowMemberCompletion"), completionMsg=$("#memberCompletionMsg");
+  if(completionToggle)completionToggle.onchange=async()=>{
+    completionToggle.disabled=true;completionMsg.textContent="儲存中…";
+    try{
+      const res=await fetch("/api/tasks/completion-settings",{method:"POST",headers:{"Content-Type":"application/json",...hdr()},body:JSON.stringify({allow_members:completionToggle.checked})});
+      if(!res.ok)throw Error("無法儲存權限");
+      completionMsg.textContent="已儲存";await refetch();
+    }catch(e){completionToggle.checked=!completionToggle.checked;completionMsg.textContent=e.message;}
+    finally{completionToggle.disabled=false;}
+  };
+  const auditButton=$("#taskAuditRefresh");
+  if(auditButton)auditButton.onclick=async()=>{
+    const el=$("#taskAuditList");el.textContent="載入中…";
+    try{
+      const res=await fetch("/api/tasks/status-audit",{headers:hdr(),cache:"no-store"});
+      if(!res.ok)throw Error("無法取得操作紀錄");
+      const d=await res.json();
+      el.innerHTML=d.items.length?d.items.map(a=>'<p>'+esc(a.changed_at)+' · '+esc(a.task_name)+' · '+(a.before_done?'已完成':'未完成')+' → '+(a.after_done?'已完成':'未完成')+' · '+esc(a.actor)+'</p>').join(''):"尚無完成狀態變更紀錄";
+    }catch(e){el.textContent=e.message;}
+  };
   async function call(method, path, body) {
     pending = true;
     try {
@@ -60,8 +80,8 @@
   }
   document.addEventListener("visibilitychange", () => { if (!document.hidden && !editing()) fetch(API + "/api/tasks", { headers: hdr(), cache: "no-store" }).then(r => r.json()).then(d => { apply(d); render(); setSync(true); }).catch(() => setSync(false)); });
 
-  const fin = t => isAdmin ? !!t.done : !!t.member_done;   // 管理者看複檢，組員看回報
-  const late = t => !t.member_done && !t.done && t.due && t.due < today();
+  const fin = t => !!t.done;
+  const late = t => !t.done && t.due && t.due < today();
   const PRI = { "高": 0, "中": 1, "低": 2 };
   const dtIn = v => (v || "").replace(" ", "T");
   const shortDT = v => v ? v.slice(5).replace("-", "/") : "";
@@ -75,16 +95,16 @@
     sel.innerHTML = `<option value="">所有負責者</option><option value="__none"${whoF === "__none" ? " selected" : ""}>未指派</option>` + whos.map(w => `<option${w === whoF ? " selected" : ""}>${esc(w)}</option>`).join("");
 
     // 統計
-    const total = tasks.length, rep = tasks.filter(t => t.member_done).length, chk = tasks.filter(t => t.done).length,
+    const total = tasks.length, rep = tasks.filter(t => t.done).length, chk = rep,
       lt = tasks.filter(late).length, none = tasks.filter(t => !people(t.who).length).length;
     const pct = total ? Math.round(rep / total * 100) : 0, pct2 = total ? Math.round(chk / total * 100) : 0;
-    const per = whos.map(w => { const a = tasks.filter(t => people(t.who).includes(w)); const d = a.filter(t => t.member_done).length; return `<span class="chip"><b>${esc(w)}</b> ${d}/${a.length}</span>`; }).join("");
+    const per = whos.map(w => { const a = tasks.filter(t => people(t.who).includes(w)); const d = a.filter(t => t.done).length; return `<span class="chip"><b>${esc(w)}</b> ${d}/${a.length}</span>`; }).join("");
     $("#tkStats").innerHTML = `
-      <div class="st"><span>組員回報完成</span><b>${rep} / ${total}</b><div class="pbar"><i style="width:${pct}%"></i></div></div>
-      ${isAdmin ? `<div class="st adm"><span>組長已複檢</span><b>${chk} / ${total}</b><div class="pbar"><i style="width:${pct2}%"></i></div></div>` : `<div class="st"><span>未完成</span><b>${total - rep}</b></div>`}
+      <div class="st"><span>工作主題已完成</span><b>${rep} / ${total}</b><div class="pbar"><i style="width:${pct}%"></i></div></div>
+      ${isAdmin ? `<div class="st adm"><span>管理員確認完成</span><b>${chk} / ${total}</b><div class="pbar"><i style="width:${pct2}%"></i></div></div>` : `<div class="st"><span>未完成</span><b>${total - rep}</b></div>`}
       <div class="st ${lt ? "warn" : ""}"><span>已逾期</span><b>${lt}</b></div>
       <div class="st"><span>未指派</span><b>${none}</b></div>
-      ${per ? `<div class="st wide"><span>各負責者回報完成數</span><div class="chips">${per}</div></div>` : ""}`;
+      ${per ? `<div class="st wide"><span>各負責者已完成主題數</span><div class="chips">${per}</div></div>` : ""}`;
 
     // 列表
     let list = tasks.filter(t =>
@@ -97,21 +117,23 @@
       sortBy === "add" ? (a.n - b.n) : byDue(a, b) || (PRI[a.pri] - PRI[b.pri])));
 
     const ro = isAdmin ? "" : "disabled";
-    const head = `<div class="tk h"><span>回報完成</span><span>工作內容</span><span>負責者</span><span>截止</span><span>優先</span><span>備註</span><span>成果</span>${isAdmin ? "<span>組長複檢</span><span></span>" : ""}</div>`;
+    const canComplete = isAdmin || tasks.some(t=>t.member_completion_allowed);
+    const head = `<div class="tk h"><span>完成狀態</span><span>工作主題</span><span>負責者</span><span>截止</span><span>優先</span><span>目標</span><span>進度回報／歷史成果</span>${isAdmin ? "<span>完成時間</span><span></span>" : ""}</div>`;
     $("#tkTable").innerHTML = head + (list.length ? list.map(t => `
-      <div class="tk ${t.member_done ? "rep" : ""} ${isAdmin && t.done ? "done" : ""} ${late(t) ? "late" : ""}" data-id="${t.id}">
-        <div class="ckc"><label class="ck"><input type="checkbox" data-k="member_done" ${t.member_done ? "checked" : ""} aria-label="組員回報完成"></label><span class="when">${t.member_done_at ? esc(shortDT(t.member_done_at)) : "未回報"}</span></div>
+      <div class="tk ${t.done ? "rep" : ""} ${isAdmin && t.done ? "done" : ""} ${late(t) ? "late" : ""}" data-id="${t.id}">
+        <div class="ckc"><label class="ck"><input type="checkbox" data-k="done" ${t.done ? "checked" : ""} ${canComplete?"":"disabled"} aria-label="工作主題完成"></label><span class="when">${t.done ? "已完成" : late(t) ? "已逾期" : "進行中"}</span></div>
         <textarea class="in task" rows="1" ${ro} data-k="task" aria-label="工作內容">${esc(t.task)}</textarea>
         <div class="whos" data-k2="who">${(() => { const p = people(t.who).slice(0, 4); const n = isAdmin ? Math.min(4, p.length + 1) : Math.max(1, p.length); return Array.from({ length: n }, (_, i) => `<input class="in w" ${ro} value="${esc(p[i] || "")}" list="whoList" placeholder="${i ? (isAdmin ? "＋負責者" : "") : "未指派"}" aria-label="負責者 ${i + 1}">`).join(""); })()}</div>
         <input class="in" type="date" ${ro} data-k="due" value="${esc(t.due)}" aria-label="截止">
         <select class="in pri p${PRI[t.pri]}" ${ro} data-k="pri" aria-label="優先級">${["高", "中", "低"].map(p => `<option${p === t.pri ? " selected" : ""}>${p}</option>`).join("")}</select>
-        <textarea class="in" rows="1" ${ro} data-k="note" placeholder="—" aria-label="備註">${esc(t.note)}</textarea>
-        <div class="resultbox"><textarea class="in res" rows="1" data-k="result" placeholder="填寫成果、量測數據或連結" aria-label="成果">${esc(t.result)}</textarea>
-          <div class="atts">${(t.attachments||[]).map(a => { const img=/^image\//.test(a.mime||""); return `<div class="att">${img ? `<img src="${esc(a.url)}" alt="">` : `<span class="fileico">📎</span>`}<a href="${esc(a.url)}" target="_blank" title="${esc(a.original_name)}">${esc(a.original_name)}</a><small>${a.size<1048576?Math.max(1,Math.round(a.size/1024))+" KB":(a.size/1048576).toFixed(1)+" MB"}</small>${isAdmin?`<button type="button" class="attdel" data-attdel="${a.id}" title="刪除附件">×</button>`:""}</div>`; }).join("")}
-          </div>
-          <label class="uploadbtn">＋ 上傳附件<input type="file" data-upload="${t.id}" accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.txt,.csv" hidden></label><small class="uploadhint">圖片、PDF、Office、ZIP 等，單檔上限 50 MB</small>
+        <textarea class="in" rows="1" ${ro} data-k="note" placeholder="—" aria-label="目標">${esc(t.note)}</textarea>
+        <div class="resultbox">
+          <button type="button" class="btn ghost" data-task-reports="${esc(t.id)}">查看回報（${t.report_count||0}）</button>
+          ${t.latest_report ? `<small>最近：${esc(t.latest_report.created.slice(0,16))} · ${esc(t.latest_report.subject)}</small><small>${esc(t.latest_report.content.slice(0,90))}</small>` : '<small>尚無關聯回報</small>'}
+          <button type="button" class="btn ghost" data-task-add="${esc(t.id)}">新增回報</button>
+          ${t.result || (t.attachments||[]).length ? `<details><summary>歷史成果與附件（唯讀）</summary><p>${esc(t.result)}</p>${(t.attachments||[]).map(a=>`<p><a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.original_name)}</a></p>`).join('')}</details>` : ''}
         </div>
-        ${isAdmin ? `<div class="ckc rv"><label class="ck"><input type="checkbox" data-k="done" ${t.done ? "checked" : ""} aria-label="組長複檢確認"></label><input class="in dt" type="datetime-local" data-k="done_date" value="${esc(dtIn(t.done_date))}" aria-label="複檢確認時間"></div>
+        ${isAdmin ? `<div class="ckc rv"><input class="in dt" type="datetime-local" data-k="done_date" value="${esc(dtIn(t.done_date))}" aria-label="完成時間"></div>
         <button class="del" data-del="${t.id}" title="刪除" aria-label="刪除">×</button>` : ""}
       </div>`).join("") : `<div class="tk empty">${rev ? "沒有符合條件的工作。" : "正在載入共用清單…"}</div>`);
     grow();
@@ -159,11 +181,15 @@
   tbl.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey && e.target.matches(".in")) { e.preventDefault(); e.target.blur(); } });
   tbl.addEventListener("input", e => { if (e.target.tagName === "TEXTAREA") { e.target.style.height = "auto"; e.target.style.height = e.target.scrollHeight + 2 + "px"; } });
   tbl.addEventListener("click", e => {
+    const add=e.target.closest("[data-task-add]");
+    if(add){window.dispatchEvent(new CustomEvent("xle-progress-task",{detail:{taskId:add.dataset.taskAdd,openForm:true}}));document.querySelector('[data-view="progress"]').click();return;}
+    const link=e.target.closest("[data-task-reports]");
+    if(link){window.dispatchEvent(new CustomEvent("xle-progress-task",{detail:{taskId:link.dataset.taskReports}}));document.querySelector('[data-view="progress"]').click();return;}
     const aid=e.target.dataset.attdel;
     if(aid){ if(confirm("刪除這個附件？")) call("DELETE","/api/attachments/"+aid).catch(()=>{}); return; }
     const id = e.target.dataset.del; if (!id) return;
     const t = tasks.find(x => x.id === id);
-    if (confirm("刪除這項工作？全組都會看不到。\n" + (t ? t.task : ""))) call("DELETE", "/api/tasks/" + id).catch(() => {});
+    xleDialog({title:'確認刪除工作主題',message:'工作：'+(t?t.task:'')+'\\n刪除後工作清單不再顯示，但既有進度回報仍會保留。',danger:true,label:'確認刪除'}).then(ok=>{if(ok)call("DELETE","/api/tasks/"+id).catch(()=>{});});
   });
 
   // 篩選與排序
@@ -183,7 +209,7 @@
   $("#tkExport").addEventListener("click", () => dl(`XLeRobot-分工時程-${stamp()}.json`, JSON.stringify({ app: "xlerobot-tasks", v: 2, exported: new Date().toISOString(), tasks }, null, 2), "application/json"));
   $("#tkCsv").addEventListener("click", () => {
     const q = s => `"${String(s ?? "").replace(/"/g, '""')}"`;
-    const H = ["回報完成", "回報完成時間", "工作內容", "負責者", "截止", "優先級", "備註", "成果"].concat(isAdmin ? ["組長複檢", "複檢確認時間"] : []);
+    const H = ["原組員回報完成", "原回報完成時間", "工作內容", "負責者", "截止", "優先級", "目標", "歷史成果"].concat(isAdmin ? ["組長複檢", "複檢確認時間"] : []);
     const rows = [H].concat(tasks.map(t => [t.member_done ? "是" : "否", t.member_done_at, t.task, t.who, t.due, t.pri, t.note, t.result].concat(isAdmin ? [t.done ? "是" : "否", t.done_date || ""] : [])));
     dl(`XLeRobot-分工時程-${stamp()}.csv`, "\ufeff" + rows.map(r => r.map(q).join(",")).join("\r\n"), "text/csv");
   });

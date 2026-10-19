@@ -3,6 +3,8 @@ import json, os, sqlite3, threading, time, uuid, re, mimetypes, urllib.request, 
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from datetime import datetime, timezone, timedelta
 import hashlib, hmac
+import progress, backup, sys
+progress.install(sys.modules[__name__])
 
 DB = os.environ.get("TASK_DB", os.path.join(os.path.dirname(os.path.abspath(__file__)), "data.db"))
 PORT = int(os.environ.get("PORT", "8000"))
@@ -58,7 +60,7 @@ def s3_request(method, key, data=None, content_type="application/octet-stream"):
     with urllib.request.urlopen(req, timeout=60) as resp:
         return resp.read(), resp.headers
 
-APP_VERSION = os.environ.get("APP_VERSION", "v1.3.0")
+APP_VERSION = os.environ.get("APP_VERSION", "v1.4.0")
 DEPLOY_TIME = datetime.now(TZ)
 DEPLOY_TIME_TEXT = DEPLOY_TIME.strftime("%Y 年 %m 月 %d 日 %H:%M（UTC+8）")
 
@@ -67,7 +69,7 @@ def is_admin(h):
     k = h.headers.get("X-Admin-Key", "")
     return bool(ADMIN_HASH and k) and hmac.compare_digest(hashlib.sha256(k.encode()).hexdigest(), ADMIN_HASH)
 OWNER_FIELDS = ("done", "done_date")          # 組長複檢：只有管理者可見可改
-PUBLIC_FIELDS = ("result", "member_done")       # 所有人可改：成果、組員回報完成
+PUBLIC_FIELDS = ()  # 舊成果改為唯讀
 FIELDS = ("task", "who", "due", "done_date", "pri", "note", "done", "result", "member_done", "member_done_at")
 
 SEED = [
@@ -82,8 +84,15 @@ SEED = [
     ("中", "確認電瓶購買店家、發票品項與核銷方式", "採購清單"),
 ]
 
+class ClosingConnection(sqlite3.Connection):
+    def __exit__(self, *args):
+        try:
+            return super().__exit__(*args)
+        finally:
+            self.close()
+
 def conn():
-    c = sqlite3.connect(DB, timeout=10)
+    c = sqlite3.connect(DB, timeout=10, factory=ClosingConnection)
     c.row_factory = sqlite3.Row
     return c
 
@@ -93,6 +102,10 @@ def init():
             id TEXT PRIMARY KEY, n INTEGER, task TEXT NOT NULL, who TEXT DEFAULT '', due TEXT DEFAULT '',
             done_date TEXT DEFAULT '', pri TEXT DEFAULT '中', note TEXT DEFAULT '', done INTEGER DEFAULT 0, updated REAL)""")
         c.execute("CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT)")
+        c.execute("""CREATE TABLE IF NOT EXISTS task_status_audit(
+          id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL, task_name TEXT NOT NULL,
+          before_done INTEGER NOT NULL, after_done INTEGER NOT NULL, actor TEXT NOT NULL,
+          changed_at TEXT NOT NULL)""")
         c.execute("""CREATE TABLE IF NOT EXISTS attachments(
             id TEXT PRIMARY KEY, task_id TEXT NOT NULL, original_name TEXT NOT NULL, stored_name TEXT NOT NULL,
             mime TEXT DEFAULT 'application/octet-stream', size INTEGER DEFAULT 0, created TEXT DEFAULT '',
@@ -165,6 +178,10 @@ def bump(c):
 def rev(c):
     return int(c.execute("SELECT v FROM meta WHERE k='rev'").fetchone()[0])
 
+def member_completion_allowed(c):
+    r=c.execute("SELECT v FROM meta WHERE k='member_completion_allowed'").fetchone()
+    return bool(r and r['v']=='1')
+
 def rows(c, admin=True):
     amap = {}
     for a in c.execute("SELECT id,task_id,original_name,mime,size,created FROM attachments ORDER BY created"):
@@ -175,8 +192,10 @@ def rows(c, admin=True):
         d = dict(r); d["done"] = bool(d["done"]); d["member_done"] = bool(d.get("member_done"))
         for k in ("result", "member_done_at"): d[k] = d.get(k) or ""
         d["attachments"] = amap.get(d["id"], [])
-        if not admin:
-            d.pop("done", None); d.pop("done_date", None)
+        d["report_count"] = c.execute("SELECT COUNT(*) FROM progress_reports WHERE task_id=? AND status!='trash'",(d["id"],)).fetchone()[0]
+        latest=c.execute("SELECT created,subject,content FROM progress_reports WHERE task_id=? AND status!='trash' ORDER BY id DESC LIMIT 1",(d["id"],)).fetchone()
+        d["latest_report"] = dict(latest) if latest else None
+        d["member_completion_allowed"] = member_completion_allowed(c)
         out.append(d)
     return out
 
@@ -215,7 +234,8 @@ def now_s():
     return datetime.now(TZ).strftime("%Y-%m-%d %H:%M")
 
 NOTIFY_EVENTS = {'task_add','task_edit','task_done','task_reopen','task_result','task_upload','task_delete',
-                 'buy_add','buy_edit','buy_status','buy_image','buy_delete','buy_stock','buy_owner','buy_refund'}
+                 'buy_add','buy_edit','buy_status','buy_image','buy_delete','buy_stock','buy_owner','buy_refund',
+                 'progress_add','progress_continue','progress_void','progress_file_remove','progress_restore'}
 IMAGE_EXT = {'.jpg','.jpeg','.png','.webp'}
 IMAGE_MAX = 10 * 1024 * 1024
 
@@ -246,11 +266,21 @@ def queue_notify(c, event, subject, detail):
                   (uuid.uuid4().hex, event, subject[:200], detail[:1500], time.time()))
 
 
+def pending_notifications(c, cfg, now):
+    # The persistent queue survives deploys; only currently enabled events are sent.
+    enabled=[e for e in cfg.get('events',[]) if e in NOTIFY_EVENTS and not e.startswith('progress_')]
+    if not cfg.get('enabled') or not enabled:return []
+    wait=600 if cfg.get('mode')=='digest' else 0
+    slots=','.join('?' for _ in enabled)
+    return [dict(r) for r in c.execute(
+        f'SELECT * FROM notify_queue WHERE sent=0 AND created<=? AND event IN ({slots}) ORDER BY created LIMIT 5',
+        (now-wait,*enabled))]
+
+
 def mail_worker():
-    # 啟動時間以前的舊通知不自動補發
-    started_at = time.time()
 
     while True:
+        items=[]
         try:
             webhook = os.environ.get(
                 "DISCORD_WEBHOOK_URL", ""
@@ -260,24 +290,7 @@ def mail_worker():
                 cfg = notify_config(c)
 
                 if cfg.get("enabled") and webhook:
-                    wait = (
-                        600 if cfg.get("mode") == "digest"
-                        else 0
-                    )
-
-                    items = c.execute(
-                        """
-                        SELECT * FROM notify_queue
-                        WHERE sent = 0
-                          AND created > ?
-                          AND created <= ?
-                        ORDER BY created
-                        LIMIT 5
-                        """,
-                        (started_at, time.time() - wait)
-                    ).fetchall()
-
-                    items = [dict(x) for x in items]
+                    items = pending_notifications(c, cfg, time.time())
                 else:
                     items = []
 
@@ -305,7 +318,7 @@ def mail_worker():
                 )
 
                 payload = json.dumps(
-                    {"content": message},
+                    {"content": message, "allowed_mentions": {"parse": []}},
                     ensure_ascii=False
                 ).encode("utf-8")
 
@@ -337,11 +350,16 @@ def mail_worker():
                         """,
                         [(x["id"],) for x in items]
                     )
+                print('task/purchase notification delivered:',','.join(x['id'] for x in items),flush=True)
 
         except Exception as exc:
+            error='HTTP '+str(exc.code) if isinstance(exc,urllib.error.HTTPError) else type(exc).__name__
+            if items:
+                with LOCK,conn() as c:
+                    c.executemany('UPDATE notify_queue SET error=? WHERE id=? AND sent=0',[(error,x['id']) for x in items])
             print(
                 "discord notification failed:",
-                type(exc).__name__,
+                error,
                 flush=True
             )
 
@@ -412,6 +430,8 @@ class H(BaseHTTPRequestHandler):
     def do_OPTIONS(self): self._send(204, {})
 
     def do_GET(self):
+        if backup.route(self, 'GET'): return
+        if progress.route(self, "GET"): return
         p = self._path()
         if p == "/api/health": return self._send(200, {"ok": True})
         
@@ -442,9 +462,28 @@ class H(BaseHTTPRequestHandler):
                             'mime':d['mime'],'size':d['size'],'created':d['created'],
                             'parent_id':d[parent],'parent_name':name,
                             'url':('/api/files/' if kind=='task' else '/api/purchase-images/' if kind=='image' else '/api/purchase-receipts/')+d['id']})
+                for pf in c.execute("""SELECT pf.id,pf.name,pf.size,pf.report_id,pr.subject,pr.reporter,pr.task_name,pr.created
+                    FROM progress_files pf JOIN progress_reports pr ON pr.id=pf.report_id
+                    WHERE pf.removed_at='' ORDER BY pr.id DESC"""):
+                    d=dict(pf)
+                    result.append({'id':d['id'],'kind':'progress','original_name':d['name'],
+                        'mime':'application/octet-stream','size':d['size'],'created':d['created'],
+                        'parent_id':str(d['report_id']),
+                        'parent_name':d['subject']+' · '+d['reporter']+((' · '+d['task_name']) if d['task_name'] else ''),
+                        'url':'/api/progress-files/'+d['id']})
                 return self._send(200,{'files':result})
         if p == '/api/purchases':
             with LOCK, conn() as c: return self._send(200, {'purchases':purchase_rows(c,is_admin(self)),'permissions':purchase_permissions(c) if is_admin(self) else {'refund_view':purchase_permissions(c)['refund_view'],'refund_edit':purchase_permissions(c)['refund_edit']}})
+        if p == '/api/tasks/completion-settings':
+            if self._deny(): return
+            try:
+                d=self._body()
+                if type(d.get('allow_members')) is not bool: raise ValueError()
+            except Exception: return self._send(400,{'error':'設定格式錯誤'})
+            with LOCK,conn() as c:
+                c.execute("INSERT OR REPLACE INTO meta(k,v) VALUES('member_completion_allowed',?)",('1' if d['allow_members'] else '0',))
+                bump(c)
+            return self._send(200,{'allow_members':d['allow_members']})
         if p == '/api/purchases/permissions':
             if self._deny(): return
             with LOCK, conn() as c: return self._send(200,purchase_permissions(c))
@@ -476,6 +515,13 @@ class H(BaseHTTPRequestHandler):
             except Exception: return self._send(502,{'error':'storage unavailable'})
             self.send_response(200); self.send_header('Content-Type',a['mime']); self.send_header('Content-Length',str(len(b)))
             self.send_header('X-Content-Type-Options','nosniff'); self.end_headers(); self.wfile.write(b); return
+        if p == "/api/tasks/options":
+            with LOCK, conn() as c:
+                return self._send(200, {"items":[{"id":r["id"],"name":r["task"]} for r in c.execute("SELECT id,task FROM tasks ORDER BY n")]})
+        if p == "/api/tasks/status-audit":
+            if self._deny(): return
+            with LOCK, conn() as c:
+                return self._send(200,{"items":[dict(r) for r in c.execute("SELECT * FROM task_status_audit ORDER BY id DESC LIMIT 300")]})
         if p == "/api/tasks":
             q = self.path.split("?", 1)[1] if "?" in self.path else ""
             since = dict(x.split("=", 1) for x in q.split("&") if "=" in x).get("since")
@@ -514,7 +560,7 @@ class H(BaseHTTPRequestHandler):
             rel = "/index.html"
         rel = os.path.normpath(rel.lstrip("/"))
         target = os.path.abspath(os.path.join(root, rel))
-        if target.startswith(root + os.sep) and os.path.isfile(target):
+        if rel in {"index.html", "style.css", "app.js", "data.js", "tasks.js", "purchases.js", "admin-pages.js", "admin-files.js", "nav-scroll.js", "risks-admin.js", "progress.js", "progress.css", "modal.js", "arm-battery-wiring.png", "team-wiring.png", "wiring-1-lipo.png", "wiring-2-shared-u2d2.png", "wiring-3-powerbank-only.png", "README_v1.3.0.md"} and target.startswith(root + os.sep) and os.path.isfile(target):
             try:
                 with open(target, "rb") as f:
                     b = f.read()
@@ -536,6 +582,8 @@ class H(BaseHTTPRequestHandler):
         self._send(403, {"error": "owner only"}); return True
 
     def do_POST(self):
+        if backup.route(self): return
+        if progress.route(self, "POST"): return
         p = self._path()
         if p == '/api/admin/files/zip':
             if self._deny():return
@@ -550,7 +598,15 @@ class H(BaseHTTPRequestHandler):
                         for table,folder in [('attachments','uploads'),('purchase_images','purchases'),('purchase_receipts','receipts')]:
                             row=c.execute('SELECT * FROM '+table+' WHERE id=?',(ident,)).fetchone()
                             if row:prefix=folder;break
-                        if not row:continue
+                        if not row:
+                            pf=c.execute("SELECT * FROM progress_files WHERE id=? AND removed_at=''",(ident,)).fetchone()
+                            if pf:
+                                if pf['storage']=='bucket':data,_=s3_request('GET',pf['object_key'])
+                                else:
+                                    with open(os.path.join(UPLOAD_DIR,pf['object_key']),'rb') as f:data=f.read()
+                                name=os.path.basename(pf['name']).replace('\\','_').replace('/','_')
+                                z.writestr(str(n+1).zfill(2)+'_progress_'+name,data)
+                            continue
                         if row['storage']=='bucket':data,_=s3_request('GET',prefix+'/'+row['stored_name'])
                         else:
                             with open(os.path.join(UPLOAD_DIR,row['stored_name']),'rb') as f:data=f.read()
@@ -591,7 +647,8 @@ class H(BaseHTTPRequestHandler):
         if p == '/api/notifications/config':
             if self._deny(): return
             try:
-                d=self._body(); cfg={'enabled':bool(d['enabled']), 'mode':d['mode'], 'events':d['events']}
+                d=self._body(); cfg={'enabled':d['enabled'], 'mode':d['mode'], 'events':d['events']}
+                if type(cfg['enabled']) is not bool: raise ValueError()
                 if cfg['mode'] not in ('instant','digest') or not isinstance(cfg['events'],list) or any(x not in NOTIFY_EVENTS for x in cfg['events']): raise ValueError()
             except Exception: return self._send(400,{'error':'invalid settings'})
             with LOCK, conn() as c: c.execute("INSERT OR REPLACE INTO meta(k,v) VALUES('notify_config',?)",(json.dumps(cfg),))
@@ -663,6 +720,8 @@ class H(BaseHTTPRequestHandler):
                 return self._send(200,{'purchases':purchase_rows(c,is_admin(self))})
         m = re.match(r"^/api/tasks/([\w-]+)/attachments$", p)
         if m:
+            return self._send(403, {"error":"請改至進度回報上傳新成果附件"})
+        if False:
             n = int(self.headers.get("Content-Length") or 0)
             if n <= 0 or n > MAX_UPLOAD: return self._send(413, {"error": "file too large (max 50 MB)"})
             name = self.headers.get("X-File-Name", "upload.bin")
@@ -732,6 +791,7 @@ class H(BaseHTTPRequestHandler):
         return {'owner':owner if admin else old['owner'],'refund':refund if (admin or perms.get('refund_edit')) else old['refund']}
 
     def do_PATCH(self):
+        if progress.route(self, "PATCH"): return
         p = self._path()
         rm=re.fullmatch(r'/api/project-risks/([a-f0-9]+)',p)
         if rm:
@@ -777,23 +837,33 @@ class H(BaseHTTPRequestHandler):
         admin = is_admin(self)
         o = clean(d, partial=True)
         if not admin:
-            if any(k not in PUBLIC_FIELDS for k in o):
-                return self._send(403, {"error": "owner only"})
+            if any(k != "done" for k in o):
+                return self._send(403, {"error": "一般組員僅可依管理員設定操作完成狀態"})
         if not o: return self._send(400, {"error": "no fields"})
         with LOCK, conn() as c:
             cur = c.execute("SELECT * FROM tasks WHERE id=?", (m.group(1),)).fetchone()
             if not cur: return self._send(404, {"error": "gone"})
+            if not admin and not member_completion_allowed(c):
+                return self._send(403,{"error":"目前僅管理員可以勾選完成"})
+            if "result" in o or "member_done" in o or "member_done_at" in o:
+                return self._send(403,{"error":"舊成果及回報完成欄位已停止編輯"})
             if o.get("done") == 1 and not cur["done"] and not o.get("done_date"): o["done_date"] = now_s()
             if o.get("done") == 0 and "done_date" not in o: o["done_date"] = ""
             if o.get("member_done") == 1 and not cur["member_done"] and not o.get("member_done_at"): o["member_done_at"] = now_s()
             if o.get("member_done") == 0 and "member_done_at" not in o: o["member_done_at"] = ""
             sets = ",".join(f"{k}=?" for k in o) + ",updated=?"
             c.execute(f"UPDATE tasks SET {sets} WHERE id=?", (*o.values(), time.time(), m.group(1)))
+            if "done" in o and bool(o["done"]) != bool(cur["done"]):
+                c.execute("INSERT INTO task_status_audit(task_id,task_name,before_done,after_done,actor,changed_at) VALUES(?,?,?,?,?,?)",
+                          (m.group(1),cur["task"],int(bool(cur["done"])),int(bool(o["done"])),"管理員" if admin else "一般組員（未驗證身分）",now_s()))
             current = dict(cur)
             current.update(o)
             summary = notify_fields(current, TASK_NOTIFY_FIELDS)
             changes = notify_changes(cur, current, TASK_NOTIFY_FIELDS)
-            if o.get('member_done') == 1 and not cur['member_done']:
+            if 'done' in o and bool(o['done']) != bool(cur['done']):
+                queue_notify(c,'task_done' if o['done'] else 'task_reopen',
+                             '分工確認完成' if o['done'] else '分工取消完成',summary)
+            elif o.get('member_done') == 1 and not cur['member_done']:
                 queue_notify(c,'task_done','組員回報完成',summary)
             elif o.get('member_done') == 0 and cur['member_done']:
                 queue_notify(c,'task_reopen','取消完成回報',summary)
@@ -804,6 +874,7 @@ class H(BaseHTTPRequestHandler):
             r = bump(c); return self._send(200, {"rev": r, "tasks": rows(c, admin)})
 
     def do_DELETE(self):
+        if progress.route(self, "DELETE"): return
         if self._deny(): return
         p = self._path()
         rm=re.fullmatch(r'/api/project-risks/([a-f0-9]+)',p)
@@ -882,6 +953,11 @@ class H(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     init()
+    progress.init()
+    backup.init(sys.modules[__name__])
+    threading.Thread(target=progress.worker, daemon=True).start()
     print(f"listening on {PORT}, db={DB}, attachment_storage={'bucket' if S3_ENABLED else 'local'}", flush=True)
     threading.Thread(target=mail_worker, daemon=True).start()
     ThreadingHTTPServer(("0.0.0.0", PORT), H).serve_forever()
+
+
