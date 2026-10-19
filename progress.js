@@ -292,7 +292,7 @@
     select.parentNode.insertBefore(wrap,select);wrap.appendChild(select);
     const trigger=document.createElement('button');trigger.type='button';trigger.className='pr-select-trigger';trigger.setAttribute('aria-haspopup','listbox');trigger.setAttribute('aria-expanded','false');
     const label=document.createElement('span');label.className='pr-select-label';
-    const arrow=document.createElement('span');arrow.className='pr-select-arrow';arrow.setAttribute('aria-hidden','true');arrow.textContent='⌄';
+    const arrow=document.createElement('span');arrow.className='pr-select-arrow';arrow.setAttribute('aria-hidden','true');arrow.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
     trigger.append(label,arrow);wrap.appendChild(trigger);
     const popup=document.createElement('div');popup.className='pr-select-popup';popup.setAttribute('role','listbox');popup.hidden=true;document.body.appendChild(popup);
     let active=-1;
