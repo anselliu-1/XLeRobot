@@ -609,3 +609,13 @@ body.tk-admin .tk{grid-template-columns:84px 1.8fr minmax(168px,1.1fr) 122px 50p
 #progress .pr-topic>summary::before{content:'';display:block;flex:0 0 8px;width:8px;height:8px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(-45deg);transition:transform .15s;align-self:center}
 #progress .pr-topic[open]>summary::before{transform:rotate(45deg)}
 #progress .pr-topic>summary .muted{min-width:0}
+
+/* Risk card inner spacing */
+#riskItems>.hw{padding-bottom:16px}
+#riskItems>.hw>p{margin:12px 18px;line-height:1.65;overflow-wrap:anywhere}
+#riskItems>.hw>.bar{margin:14px 18px 0;gap:10px}
+#riskItems>.hw>header{padding:14px 18px}
+#riskItems>.hw>header h3{margin:0;min-width:0;overflow-wrap:anywhere}
+/* File filter chevron: consistent inset and thin-line SVG */
+#fileadmin #fileType{appearance:none!important;-webkit-appearance:none!important;background-color:var(--surface)!important;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23c5cbd1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")!important;background-repeat:no-repeat!important;background-size:16px 16px!important;background-position:right 16px center!important;padding:9px 42px 9px 14px!important;text-overflow:ellipsis}
+#fileadmin .file-group-select input{accent-color:var(--accent)}
