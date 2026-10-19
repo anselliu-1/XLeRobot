@@ -47,18 +47,19 @@
     } catch(e){console.warn('工作項目載入失敗',e);}
   }
   function card(r) {
+    const files=r.files||[];
     return `<article class="blk pr-report ${r.status==='void'?'pr-void':''}" id="report-${r.id}">
-      <header><h3>${esc(r.subject)} · 第 ${r.version} 次回報</h3><span class="tag">${r.status==='valid'?'有效':'已作廢'}</span></header>
-      <p class="muted">${esc(r.reporter)} · ${esc(date(r.created))}${r.parent_id?' · 接續第 '+(r.version-1)+' 次回報':''}${showId()?' · 回報編號 #'+r.id+(r.parent_id?'（接續 #'+r.parent_id+'）':''):''}</p>
-      <p class="muted">關聯工作：${esc(r.task_display||'未關聯')}</p>
-      <div class="pr-content">${esc(r.content) || '（無文字內容）'}</div>
-      ${r.status==='void'?`<p class="pr-reason">作廢原因：${esc(r.void_reason)}<br>${esc(date(r.void_at))}</p>`:''}
-      <ul class="pr-files">${r.files.map(f=>`<li>${f.removed_at?`<span>${esc(f.name)}（已移除：${esc(f.reason)}）</span>`:`<a href="${f.url}">${esc(f.name)}</a> · ${fileSize(f.size)}${admin?` <button class="btn ghost" data-remove="${f.id}" data-report="${r.id}">移除附件</button>`:''}`}</li>`).join('')}</ul>
-      <div class="pr-actions">${r.status==='valid'?`<button class="btn ghost" data-continue="${r.id}">接續此回報</button>`:''}
-      ${admin?`<button class="btn ghost" data-relink="${r.id}">修正工作關聯</button>`:""}
+      <div class="pr-report-head"><div><h3>${esc(r.subject)} · 第 ${r.version} 次回報</h3><p class="muted">${esc(date(r.created))}${r.parent_id?' · 接續第 '+(r.version-1)+' 次回報':''}${showId()?' · 回報編號 #'+r.id:''}</p><p class="muted">回報人：${esc(r.reporter)}　｜　關聯工作：${esc(r.task_display||'未關聯')}</p></div><span class="tag">${r.status==='valid'?'有效':'已作廢'}</span></div>
+      <div class="pr-report-section"><h4>回報內容</h4><div class="pr-content">${esc(r.content)||'（無文字內容）'}</div>${r.status==='void'? `<p class="pr-reason">作廢原因：${esc(r.void_reason)}<br>${esc(date(r.void_at))}</p>`:''}</div>
+      <div class="pr-report-section"><h4>附件（${files.length} 個）</h4><ul class="pr-files">${files.map(f=>`<li>${f.removed_at?`<span>${esc(f.name)}（已移除：${esc(f.reason)}）</span>`:`<a href="${f.url}">${esc(f.name)}</a><span class="muted">${fileSize(f.size)}</span>${admin?`<button class="btn ghost" data-remove="${f.id}" data-report="${r.id}">移除附件</button>`:''}`}</li>`).join('')||'<li class="muted">沒有附件</li>'}</ul></div>
+      <div class="pr-report-section"><h4>回報操作</h4><div class="pr-actions">
+      ${r.status==='valid'?`<button class="btn ghost" data-continue="${r.id}">接續回報</button>`:''}
+      ${admin?`<button class="btn ghost" data-relink="${r.id}">修正工作關聯</button>`:''}
       ${(admin||exportAll)?`<button class="btn ghost" data-export="${r.id}">匯出本筆</button>`:''}
-      ${(admin||auditAll)?`${admin?(r.status==='valid'?`<button class="btn ghost" data-void="${r.id}">作廢</button>`:`<button class="btn ghost" data-restore="${r.id}">恢復有效</button>`):''}<button class="btn ghost" data-audit="${r.id}">操作紀錄</button>`:''}</div>
-      <div class="pr-audit" data-audit-list="${r.id}"></div></article>`;
+      ${admin?(r.status==='valid'?`<button class="btn ghost" data-void="${r.id}">作廢</button>`:`<button class="btn ghost" data-restore="${r.id}">恢復有效</button>`):''}
+      ${(admin||auditAll)?`<button class="btn ghost" data-audit="${r.id}">操作紀錄</button>`:''}
+      ${admin?`<button class="btn ghost pr-danger-action" data-trash="${r.id}">移至垃圾桶</button>`:''}
+      </div><div class="pr-audit" data-audit-list="${r.id}"></div></div></article>`;
   }
   function render() {
     const closed = new Set([...$('#prItems').querySelectorAll('.pr-topic:not([open])')].map(el=>el.dataset.root));
@@ -90,6 +91,9 @@
         items=d.items; matched=new Set(d.matched_ids); admin=d.admin; showReportIds=!!d.show_report_ids; exportAll=!!d.export_all; auditAll=!!d.audit_all;
         if(auditPermission && admin && document.activeElement!==auditPermission)auditPermission.checked=auditAll;
         $('#prExportPanel').hidden=!(admin||exportAll);
+        $('#prTrashOpen').hidden=!admin;
+        $('#prTrashCount').textContent=admin?'（'+(d.trash_count||0)+'）':'';
+        if(!admin)$('#prTrashPanel').hidden=true;
         if(exportPermission && admin && document.activeElement!==exportPermission)exportPermission.value=exportAll?'all':'admin';
         if(settingsToggle && admin && document.activeElement!==settingsToggle)settingsToggle.checked=showReportIds;
         const selected=$('#prReporter').value;
@@ -109,7 +113,7 @@
   $('#prCancel').onclick=async()=>{if(await mayLeave())resetForm();};
   form.elements.files.onchange=()=>{
     const files=[...form.elements.files.files],size=files.reduce((n,f)=>n+f.size,0);
-    $('#prUploadSize').textContent=`${files.length} 個附件，共 ${(size/1024/1024).toFixed(2)} / 50 MB`;
+    $('#prUploadSize').textContent=`已選擇 ${files.length} / 20 個檔案，合計 ${(size/1024/1024).toFixed(2)} / 50 MB`;
   };
   form.onsubmit=async e=>{
     e.preventDefault(); const button=form.querySelector('[type=submit]');
@@ -119,7 +123,8 @@
     const linked=taskOptions.find(t=>t.id===form.elements.task_id.value);
     button.disabled=true;
     try{
-      const confirmed=await xleDialog({title:'確認送出進度回報',message:'回報主題：'+form.elements.subject.value+'\n關聯工作：'+(linked?linked.name:'未關聯工作')+'\n附件：'+files.length+' 個\n送出後無法修改原始內容，後續請使用接續回報。',label:'確認送出'});
+      const size=files.reduce((n,f)=>n+f.size,0);
+      const confirmed=await xleDialog({title:'確認送出進度回報',message:'回報人：'+form.elements.reporter.value+'\n回報主題：'+form.elements.subject.value+'\n關聯工作：'+(linked?linked.name:'未關聯工作')+'\n\n回報內容：\n'+form.elements.content.value+'\n\n附件：'+files.length+' 個，合計 '+fileSize(size)+'\n送出後無法修改原始內容，後續請使用接續回報。',label:'確認送出'});
       if(!confirmed)return;
     }catch(e){$('#prMessage').textContent='無法開啟確認視窗：'+e.message;return;}
     finally{button.disabled=false;}
@@ -150,6 +155,15 @@
     }
     b.disabled=true;
     try {
+      if(b.dataset.trash){
+        const r=items.find(x=>x.id===Number(b.dataset.trash));
+        const reason=await xleDialog({title:'移至垃圾桶',message:'回報：'+(r?.subject||'')+' · 第 '+(r?.version||'')+' 次回報\n回報與附件將從一般列表隱藏，管理員可以在垃圾桶還原。',kind:'reason',requireReason:true,label:'下一步'});
+        if(reason===null)return;
+        const ok=await xleDialog({title:'確認移至垃圾桶',message:'確定移動此筆回報嗎？此操作不會永久刪除資料或附件。',label:'移至垃圾桶',danger:true});
+        if(!ok)return;
+        await api('/api/progress/'+b.dataset.trash+'/trash',{method:'POST',headers:{...headers(),'Content-Type':'application/json'},body:JSON.stringify({reason})});
+        await load();return;
+      }
       if(b.dataset.relink){
         const r=items.find(x=>x.id===Number(b.dataset.relink));
         const chosen=await xleDialog({title:'修正關聯工作',message:'請選擇正確的工作主題',options:[{value:'',label:'不關聯工作'}].concat(taskOptions.map(t=>({value:t.id,label:t.name}))),value:r?.task_id||'',label:'下一步'});
@@ -170,6 +184,40 @@
         if(d.warning)await xleDialog({title:'操作提醒',message:d.warning,kind:'notice'}); await load();
       }
     } catch(e){await xleDialog({title:'操作失敗',message:e.message,kind:'notice'});} finally {b.disabled=false;}
+  };
+  async function loadTrash(){
+    if(!admin)return;
+    const panel=$('#prTrashItems');
+    panel.textContent='讀取中…';
+    try{
+      const d=await api('/api/progress/trash',{headers:headers()});
+      panel.innerHTML=d.items.length?d.items.map(r=>`<article class="pr-trash-item"><div><strong>${esc(r.subject)} · 第 ${r.version} 次回報</strong><p class="muted">回報人：${esc(r.reporter)} · 移除時間：${esc(date(r.trash_at))}</p><p>移除原因：${esc(r.trash_reason)}</p><p class="muted">附件：${r.files.length} 個 · 原狀態：${r.trash_previous_status==='void'?'已作廢':'有效'}</p></div><div class="pr-actions"><button class="btn ghost" data-untrash="${r.id}">還原</button><button class="btn ghost pr-danger-action" data-delete="${r.id}">永久刪除</button></div></article>`).join(''):'<p class="muted">垃圾桶目前沒有回報。</p>';
+      $('#prDeletedAudit').innerHTML=d.deleted.map(r=>`<p class="muted">#${r.report_id} · ${esc(r.subject)} · ${esc(date(r.created))} · ${esc(r.reason)}</p>`).join('')||'<p class="muted">尚無永久刪除紀錄。</p>';
+    }catch(e){panel.textContent='讀取垃圾桶失敗：'+e.message;}
+  }
+  $('#prTrashOpen').onclick=()=>{$('#prTrashPanel').hidden=false;loadTrash();$('#prTrashPanel').scrollIntoView({behavior:'smooth'});};
+  $('#prTrashClose').onclick=()=>{$('#prTrashPanel').hidden=true;};
+  $('#prTrashItems').onclick=async e=>{
+    const b=e.target.closest('button');if(!b)return;
+    b.disabled=true;
+    try{
+      const rid=b.dataset.untrash||b.dataset.delete;
+      if(!rid)return;
+      if(b.dataset.untrash){
+        const reason=await xleDialog({title:'還原進度回報',message:'還原後會重新出現在進度回報列表，並恢復原本的有效或作廢狀態。',kind:'reason',requireReason:true,label:'確認還原'});
+        if(reason===null)return;
+        await api('/api/progress/'+rid+'/untrash',{method:'POST',headers:{...headers(),'Content-Type':'application/json'},body:JSON.stringify({reason})});
+      }else{
+        const reason=await xleDialog({title:'永久刪除進度回報',message:'此操作會永久刪除回報內容與附件，無法還原。若有接續回報，系統會拒絕刪除。',kind:'reason',requireReason:true,label:'下一步',danger:true});
+        if(reason===null)return;
+        const confirmed=await xleDialog({title:'最後確認：永久刪除',message:'請確認要永久刪除此筆回報及其附件。僅保留管理員刪除稽核紀錄。',ack:true,danger:true,label:'確認永久刪除'});
+        if(!confirmed)return;
+        const d=await api('/api/progress/'+rid+'/delete',{method:'POST',headers:{...headers(),'Content-Type':'application/json'},body:JSON.stringify({reason})});
+        if(d.warning)await xleDialog({title:'清理提醒',message:d.warning,kind:'notice'});
+      }
+      await load();await loadTrash();
+    }catch(err){await xleDialog({title:'操作失敗',message:err.message,kind:'notice'});}
+    finally{b.disabled=false;}
   };
   $('#prSearch').oninput=()=>{clearTimeout(timer);timer=setTimeout(load,250);};
   ['prReporter','prStatus'].forEach(id=>$('#'+id).onchange=load);
