@@ -121,7 +121,7 @@
     const head = `<div class="tk h"><span>完成狀態</span><span>工作主題</span><span>負責者</span><span>截止</span><span>優先</span><span>目標</span><span>進度回報／歷史成果</span>${isAdmin ? "<span>完成時間</span><span></span>" : ""}</div>`;
     $("#tkTable").innerHTML = head + (list.length ? list.map(t => `
       <div class="tk ${t.done ? "rep" : ""} ${isAdmin && t.done ? "done" : ""} ${late(t) ? "late" : ""}" data-id="${t.id}">
-        <div class="ckc"><label class="ck"><input type="checkbox" data-k="done" ${t.done ? "checked" : ""} ${canComplete?"":"disabled"} aria-label="工作主題完成"></label><span class="when">${t.done ? "已完成" : "進行中"}</span></div>
+        <div class="ckc"><label class="ck"><input type="checkbox" data-k="done" ${t.done ? "checked" : ""} ${canComplete?"":"disabled"} aria-label="工作主題完成"></label><span class="when">${t.done ? "已完成" : late(t) ? "已逾期" : "進行中"}</span></div>
         <textarea class="in task" rows="1" ${ro} data-k="task" aria-label="工作內容">${esc(t.task)}</textarea>
         <div class="whos" data-k2="who">${(() => { const p = people(t.who).slice(0, 4); const n = isAdmin ? Math.min(4, p.length + 1) : Math.max(1, p.length); return Array.from({ length: n }, (_, i) => `<input class="in w" ${ro} value="${esc(p[i] || "")}" list="whoList" placeholder="${i ? (isAdmin ? "＋負責者" : "") : "未指派"}" aria-label="負責者 ${i + 1}">`).join(""); })()}</div>
         <input class="in" type="date" ${ro} data-k="due" value="${esc(t.due)}" aria-label="截止">
