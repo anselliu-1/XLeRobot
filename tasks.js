@@ -34,7 +34,27 @@
   const people = w => String(w || "").split(/[、,，;；\/]+/).map(x => x.trim()).filter(Boolean);
   const joinP = arr => [...new Set(arr.map(x => x.trim()).filter(Boolean))].slice(0, 4).join("、");
   const norm = t => ({ ...t, attachments: Array.isArray(t.attachments) ? t.attachments : [], who: t.who || "", due: t.due || "", done_date: t.done_date || "", note: t.note || "", result: t.result || "", member_done_at: t.member_done_at || "" });
-  function apply(d) { if (d && Array.isArray(d.tasks)) { tasks = d.tasks.map(norm); rev = d.rev; } }
+  function apply(d) { if (d && Array.isArray(d.tasks)) { tasks = d.tasks.map(norm); rev = d.rev; const toggle=$("#allowMemberCompletion"); if(toggle && tasks.length) toggle.checked=!!tasks[0].member_completion_allowed; } }
+  const completionToggle=$("#allowMemberCompletion"), completionMsg=$("#memberCompletionMsg");
+  if(completionToggle)completionToggle.onchange=async()=>{
+    completionToggle.disabled=true;completionMsg.textContent="儲存中…";
+    try{
+      const res=await fetch("/api/tasks/completion-settings",{method:"POST",headers:{"Content-Type":"application/json",...hdr()},body:JSON.stringify({allow_members:completionToggle.checked})});
+      if(!res.ok)throw Error("無法儲存權限");
+      completionMsg.textContent="已儲存";await refetch();
+    }catch(e){completionToggle.checked=!completionToggle.checked;completionMsg.textContent=e.message;}
+    finally{completionToggle.disabled=false;}
+  };
+  const auditButton=$("#taskAuditRefresh");
+  if(auditButton)auditButton.onclick=async()=>{
+    const el=$("#taskAuditList");el.textContent="載入中…";
+    try{
+      const res=await fetch("/api/tasks/status-audit",{headers:hdr(),cache:"no-store"});
+      if(!res.ok)throw Error("無法取得操作紀錄");
+      const d=await res.json();
+      el.innerHTML=d.items.length?d.items.map(a=>'<p>'+esc(a.changed_at)+' · '+esc(a.task_name)+' · '+(a.before_done?'已完成':'未完成')+' → '+(a.after_done?'已完成':'未完成')+' · '+esc(a.actor)+'</p>').join(''):"尚無完成狀態變更紀錄";
+    }catch(e){el.textContent=e.message;}
+  };
   async function call(method, path, body) {
     pending = true;
     try {
