@@ -30,6 +30,6 @@
     document.addEventListener('keydown',onKey,true);
     input?.addEventListener('input',valid);check?.addEventListener('change',valid);valid();
     cancel.onclick=()=>finish(null);ok.onclick=()=>finish(input?input.value:true);
-    (input||cancel).focus();
+    (input||(kind==='notice'?ok:cancel)).focus();
   });
 })();
