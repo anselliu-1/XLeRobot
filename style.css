@@ -494,3 +494,8 @@ body.tk-admin .tk{grid-template-columns:84px 1.8fr minmax(168px,1.1fr) 122px 50p
 #prExportTaskWrap[hidden],#prExportPanel[hidden]{display:none!important}
 .tk.late .when{color:var(--c);font-weight:700}
 @media(max-width:700px){.pr-export-fields{grid-template-columns:1fr}.admin-group-body{padding:12px}.admin-group>summary{padding:14px 16px}}
+
+/* Staging follow-up: overview flow card text padding and modal select chevron */
+#overview > .hwgrid:first-of-type .hw > p{margin:0;padding:16px 18px 18px;line-height:1.65;box-sizing:border-box}
+#overview > .hwgrid:first-of-type .hw > header{padding:14px 18px}
+.xle-modal select.xle-modal-input{appearance:none;-webkit-appearance:none;padding-right:44px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23c5cbd1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-size:16px 16px;background-position:right 18px center}
