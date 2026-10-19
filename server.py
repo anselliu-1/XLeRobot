@@ -60,7 +60,7 @@ def s3_request(method, key, data=None, content_type="application/octet-stream"):
     with urllib.request.urlopen(req, timeout=60) as resp:
         return resp.read(), resp.headers
 
-APP_VERSION = os.environ.get("APP_VERSION", "v1.3.0")
+APP_VERSION = os.environ.get("APP_VERSION", "v1.4.0")
 DEPLOY_TIME = datetime.now(TZ)
 DEPLOY_TIME_TEXT = DEPLOY_TIME.strftime("%Y 年 %m 月 %d 日 %H:%M（UTC+8）")
 
