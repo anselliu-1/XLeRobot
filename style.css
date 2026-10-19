@@ -567,3 +567,29 @@ body.tk-admin .tk{grid-template-columns:84px 1.8fr minmax(168px,1.1fr) 122px 50p
 #fileadmin .file-entry-actions label{display:inline-flex;align-items:center;gap:6px;cursor:pointer}
 #fileadmin .file-entry-actions a{color:var(--accent);text-decoration:none}
 @media(max-width:700px){#fileadmin .file-group>summary{padding:13px 15px}#fileadmin .file-group-body{padding:12px}#fileadmin .file-group-desc{flex-basis:100%;order:3}}
+
+/* Staging 2026-10-19: overview matches task row completion/overdue colors */
+#overviewTopics .overview-topic.overview-done{background:var(--a-bg);border-color:color-mix(in srgb,var(--a) 24%,var(--line))}
+#overviewTopics .overview-topic.overview-late{background:var(--c-bg);border-color:color-mix(in srgb,var(--c) 24%,var(--line))}
+#overviewTopics .overview-topic.overview-done header,#overviewTopics .overview-topic.overview-late header{background:transparent}
+#fileadmin .file-group-select{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:12px 14px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+#fileadmin .file-group-select label{display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-weight:600}
+#fileadmin .file-group-select .muted{margin:0}
+/* Two report buttons share the same baseline and height */
+#progress .pr-top-actions{align-items:stretch;gap:12px}
+#progress .pr-top-actions>.btn{height:42px;min-height:42px;margin:0;display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:8px 14px;line-height:1.3}
+/* Custom select: fully controlled chevron position and expanded option padding */
+#progress .pr-select-wrap{position:relative;min-width:0;width:100%}
+#progress .pr-select-wrap>select{position:absolute!important;inset:0!important;width:1px!important;height:1px!important;opacity:0!important;pointer-events:none!important;overflow:hidden!important;padding:0!important;border:0!important}
+#progress .pr-select-trigger{width:100%;height:43px;min-width:0;display:flex;align-items:center;gap:12px;justify-content:space-between;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:9px 18px 9px 14px;font:inherit;font-weight:600;cursor:pointer;text-align:left}
+#progress .pr-select-trigger:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#progress .pr-select-label{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1}
+#progress .pr-select-arrow{display:block;flex:none;font-size:22px;line-height:1;width:15px;text-align:center;transform:translateY(-2px)}
+.pr-select-popup{position:fixed;z-index:1000;overflow:auto;overscroll-behavior:contain;padding:6px;background:var(--surface);border:1px solid var(--line);border-radius:9px;box-shadow:0 12px 32px #0007}
+.pr-select-popup[hidden]{display:none!important}
+.pr-select-option{display:block;width:100%;text-align:left;border:0;border-radius:5px;background:transparent;color:var(--ink);font:inherit;padding:10px 16px;line-height:1.55;cursor:pointer;white-space:normal;overflow-wrap:anywhere}
+.pr-select-option:hover,.pr-select-option:focus-visible{background:color-mix(in srgb,var(--accent) 18%,var(--surface));outline:none}
+.pr-select-option[aria-selected=true]{background:color-mix(in srgb,var(--accent) 24%,var(--surface));font-weight:700}
+#progress .pr-filters label{min-width:160px}
+#progress .pr-filters label:first-child{min-width:220px}
+@media(max-width:700px){#progress .pr-filters label{min-width:0}#progress .pr-filters label:first-child{min-width:0}}
