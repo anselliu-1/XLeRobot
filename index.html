@@ -53,6 +53,7 @@
       <input type="hidden" name="parent_id">
       <div class="pr-fields"><label>回報人（必填）<input name="reporter" required maxlength="80" autocomplete="name"></label>
       <label>主題（必填）<input name="subject" required maxlength="200"></label></div>
+      <label>關聯工作項目（選填）<select name="task_id" id="prTask"><option value="">不關聯工作項目</option></select></label>
       <label>回報內容（必填）<textarea name="content" required rows="5" maxlength="10000" placeholder="這次做了什麼、測試結果、遇到的問題與下一步…"></textarea></label>
       <label>多附件（每筆合計最多 50MB、20 個）<input name="files" type="file" multiple></label>
       <p class="muted">支援程式、壓縮檔、圖片、影片與文件；附件只供下載。時間由伺服器記錄（台灣 UTC+8）。送出後不可修改，請確認內容。接續回報不會複製舊附件。</p>
@@ -61,13 +62,14 @@
     </form>
     <div class="blk pr-filters">
       <label>搜尋<input id="prSearch" type="search" placeholder="姓名、主題、內容或附件檔名"></label>
+      <label>關聯工作<select id="prTaskFilter"><option value="">全部工作</option></select></label>
       <label>回報人<select id="prReporter"><option value="">全部姓名</option></select></label>
       <label>狀態<select id="prStatus"><option value="all">全部狀態</option><option value="valid">有效</option><option value="void">已作廢</option></select></label>
       <label>日期排序<select id="prSort"><option value="desc">遞減（最新優先）</option><option value="asc">遞增（最早優先）</option></select></label>
       <label>檢視<select id="prView"><option value="topic">依主題／完整版本歷程</option><option value="time">依時間</option></select></label>
       <button type="button" class="btn ghost" id="prRefresh">重新整理</button>
     </div>
-    <p id="prSync" class="muted" role="status" aria-live="polite">同步中…</p><p id="prCount" role="status"></p><div id="prItems"></div>
+    <div class="sync" id="prSync" role="status" aria-live="off"><i></i><span>連線中…</span></div><p id="prCount" role="status"></p><div id="prItems"></div>
   </section>
   <!-- 總覽：新方向優先，舊版內容收合 -->
   <section class="view on" id="overview">
@@ -136,6 +138,8 @@
     <div class="hw"><header><h3>管理員登入狀態</h3></header><p>管理者模式已啟用。可在「分工 & 時程」登出。</p><button class="btn ghost" id="adminSettingsLogout">管理員登出</button></div>
     <div class="hw"><header><h3>系統資訊</h3></header><p>測試站：XLeRobot-Staging・v1.4.0 測試版</p></div>
     <div class="hw"><header><h3>進度回報顯示設定</h3></header><label><input type="checkbox" id="progressShowIds"> 向一般組員顯示回報編號</label><p class="muted">預設關閉；管理員始終可查看編號。設定適用所有組員。</p><p id="progressShowIdsMsg" class="muted" role="status"></p></div>
+    <div class="hw"><header><h3>分工時程完成權限</h3></header><label><input type="checkbox" id="allowMemberCompletion"> 允許一般組員勾選工作完成</label><p class="muted">預設關閉。關閉時僅管理員可操作；切換不會改變既有完成狀態。</p><p id="memberCompletionMsg" class="muted" role="status"></p></div>
+    <div class="hw"><header><h3>完成狀態操作紀錄</h3></header><button class="btn ghost" id="taskAuditRefresh" type="button">查看最近 300 筆操作紀錄</button><div id="taskAuditList" class="muted"></div></div>
     <div class="hw"><header><h3>完整資料備份</h3></header>
       <p>一鍵下載 ZIP：包含進度回報、分工時程、採購清單、風險與設定、操作紀錄，以及目前仍保留的附件、商品圖片和報銷憑證。</p>
       <p class="muted">也包含資料庫快照、可讀取的 JSON、檔案核對清單與網站程式。已永久移除的檔案無法備份；雲端憑證與管理員金鑰不包含在內。打包期間請保留此頁，完成後請將 ZIP 儲存到電腦。</p>
@@ -321,7 +325,7 @@
       <div class="f-who"><span>負責者（最多 4 人）</span><div class="w4"><input id="fWho" list="whoList" placeholder="負責者 1" aria-label="負責者 1"><input id="fWho2" list="whoList" placeholder="負責者 2" aria-label="負責者 2"><input id="fWho3" list="whoList" placeholder="負責者 3" aria-label="負責者 3"><input id="fWho4" list="whoList" placeholder="負責者 4" aria-label="負責者 4"></div></div>
       <label><span>截止</span><input id="fDue" type="date"></label>
       <label><span>優先級</span><select id="fPri"><option>高</option><option selected>中</option><option>低</option></select></label>
-      <label class="f-note"><span>備註（僅組長可編輯）</span><input id="fNote" placeholder="選填"></label>
+      <label class="f-note"><span>目標（僅管理員可編輯）</span><input id="fNote" placeholder="請填寫預計達成的成果或驗收條件"></label>
       <button class="btn primary" type="submit">新增工作</button>
     </form>
     <datalist id="whoList"></datalist>
@@ -440,7 +444,7 @@
 <script src="purchases.js?v=20261019f"></script>
 <script src="admin-pages.js?v=20261019g"></script>
 <script src="risks-admin.js?v=20261012a"></script>
-<script src="progress.js?v=20261019h"></script>
+<script src="progress.js?v=20261019j"></script>
 <script>
 async function loadSiteInfo() {
   try {
