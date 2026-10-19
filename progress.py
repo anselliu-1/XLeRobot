@@ -1,6 +1,5 @@
 """Immutable progress reports; isolated tables, object prefix and durable outbox."""
 import json, os, re, uuid, time, threading, urllib.request, urllib.parse
-import progress_export
 from email.parser import BytesParser
 from email.policy import default
 from datetime import datetime
@@ -291,6 +290,7 @@ def route(h,method):
             if origin and urllib.parse.urlsplit(origin).netloc!=h.headers.get('Host'):
                 h._send(403,{'error':'不允許跨網站操作'}); return True
         if method=='POST' and p=='/api/progress/export':
+            import progress_export
             progress_export.export(h)
         elif method=='POST' and re.fullmatch(r'/api/progress/[1-9][0-9]*/relink',p):
             if not A.is_admin(h): h._send(403,{'error':'需要管理員'})
