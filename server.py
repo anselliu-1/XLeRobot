@@ -562,7 +562,7 @@ class H(BaseHTTPRequestHandler):
             rel = "/index.html"
         rel = os.path.normpath(rel.lstrip("/"))
         target = os.path.abspath(os.path.join(root, rel))
-        if rel in {"index.html", "style.css", "app.js", "data.js", "tasks.js", "purchases.js", "admin-pages.js", "risks-admin.js", "progress.js", "progress.css", "arm-battery-wiring.png", "team-wiring.png", "wiring-1-lipo.png", "wiring-2-shared-u2d2.png", "wiring-3-powerbank-only.png", "README_v1.3.0.md"} and target.startswith(root + os.sep) and os.path.isfile(target):
+        if rel in {"index.html", "style.css", "app.js", "data.js", "tasks.js", "purchases.js", "admin-pages.js", "risks-admin.js", "progress.js", "progress.css", "modal.js", "arm-battery-wiring.png", "team-wiring.png", "wiring-1-lipo.png", "wiring-2-shared-u2d2.png", "wiring-3-powerbank-only.png", "README_v1.3.0.md"} and target.startswith(root + os.sep) and os.path.isfile(target):
             try:
                 with open(target, "rb") as f:
                     b = f.read()
