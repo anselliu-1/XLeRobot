@@ -74,7 +74,8 @@
       $('#overviewProgressLabel').textContent=done+' / '+count+' 項工作主題已完成（'+rate+'%）';
       const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
       const dueValue=t=>String(t.due||t.deadline||'').slice(0,10);
-      topics.innerHTML=tasks.length?tasks.map(t=>{
+      const orderedTasks=[...tasks].sort((a,b)=>{const rank=t=>t.done?2:(/^\d{4}-\d{2}-\d{2}$/.test(dueValue(t))&&dueValue(t)<today?0:1);return rank(a)-rank(b);});
+      topics.innerHTML=orderedTasks.length?orderedTasks.map(t=>{
         const due=dueValue(t),late=!t.done&&/^\d{4}-\d{2}-\d{2}$/.test(due)&&due<today;
         const status=t.done?'已完成':late?'已逾期':'進行中';
         const css=t.done?'overview-done':late?'overview-late':'';
