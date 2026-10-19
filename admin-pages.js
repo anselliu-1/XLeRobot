@@ -5,7 +5,7 @@
   let admin=false, files=[], backupStatusBusy=false;
   const selectedFileIds=new Set(), openFileGroups=new Set();
   const fileGroups=[['task','分工＆時程','原有工作附件及歷史資料'],['progress','進度回報','各筆進度回報的附件'],['image','商品圖片','商品圖片及相關檔案'],['receipt','報銷憑證','報銷相關附件']];
-  const formatOverviewDate=s=>{if(!s)return '';const raw=String(s);if(/^\\d{4}-\\d{2}-\\d{2}T?\\d{2}:\\d{2}/.test(raw)&&!/[zZ]|[+-]\\d{2}:?\\d{2}$/.test(raw))return raw.slice(0,16).replace('T',' ').replace(/-/g,'/');const d=new Date(raw);return Number.isNaN(d.getTime())?raw.replace('T',' ').replace(/-/g,'/'):new Intl.DateTimeFormat('zh-TW',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).format(d);};
+  const formatOverviewDate=s=>{if(!s)return '';const raw=String(s);if(/^\d{4}-\d{2}-\d{2}T?\d{2}:\d{2}/.test(raw)&&!/[zZ]|[+-]\d{2}:?\d{2}$/.test(raw))return raw.slice(0,16).replace('T',' ').replace(/-/g,'/');const d=new Date(raw);return Number.isNaN(d.getTime())?raw.replace('T',' ').replace(/-/g,'/'):new Intl.DateTimeFormat('zh-TW',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).format(d);};
   const formatFileDate=s=>{if(!s)return '時間未提供';const d=new Date(s);return Number.isNaN(d.getTime())?String(s):new Intl.DateTimeFormat('zh-TW',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(d);};
   const shownFiles=()=>{const q=$('#fileSearch').value.trim().toLowerCase(),type=$('#fileType').value;return files.filter(f=>(type==='all'||f.kind===type)&&(String(f.original_name||'')+' '+String(f.parent_name||'')).toLowerCase().includes(q));};
   function updateFileSelection(){const shown=shownFiles(),all=shown.length>0&&shown.every(f=>selectedFileIds.has(String(f.id))),some=shown.some(f=>selectedFileIds.has(String(f.id)));const cb=$('#fileSelectAll');cb.checked=all;cb.indeterminate=!all&&some;cb.disabled=!shown.length;$('#fileSelectedCount').textContent='已選取 '+selectedFileIds.size+' 個檔案';}
@@ -75,7 +75,7 @@
       const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
       const dueValue=t=>String(t.due||t.deadline||'').slice(0,10);
       topics.innerHTML=tasks.length?tasks.map(t=>{
-        const due=dueValue(t),late=!t.done&&/^\\d{4}-\\d{2}-\\d{2}$/.test(due)&&due<today;
+        const due=dueValue(t),late=!t.done&&/^\d{4}-\d{2}-\d{2}$/.test(due)&&due<today;
         const status=t.done?'已完成':late?'已逾期':'進行中';
         const css=t.done?'overview-done':late?'overview-late':'';
         return '<article class="hw overview-topic '+css+'"><header><h3>'+esc(t.task)+'</h3></header><p>'+status+' · '+(t.report_count||0)+' 筆進度回報</p>'+(late?'<p class="muted">截止日期：'+esc(due.replace(/-/g,'/'))+'</p>':'')+(t.latest_report?'<p class="muted">最近更新：'+esc(formatOverviewDate(t.latest_report.created))+'</p>':'<p class="muted">尚無關聯回報</p>')+'</article>';
