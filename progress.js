@@ -3,7 +3,7 @@
   const esc = s => String(s ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const headers = () => ({'X-Admin-Key':localStorage.getItem('xle-admin') || ''});
   const fileSize = n => n<1024 ? n+' bytes' : n<1024*1024 ? (n/1024).toFixed(1)+' KB' : (n/1024/1024).toFixed(2)+' MB';
-  const syncMessage = (text,state='') => {const el=$('#prSync');if(el.textContent!==text)el.textContent=text;el.dataset.state=state;};
+  const syncMessage = (text,state='') => {const el=$('#prSync');if(!el)return;const span=el.querySelector('span');if(span&&span.textContent!==text)span.textContent=text;el.className='sync '+(state==='connected'?'ok':state==='error'?'bad':'');};
   let items = [], matched = new Set(), admin = false, showReportIds = false, request = 0, timer;
   let pendingLoads = 0, lastSnapshot = '', taskFilter = '';
   let taskOptions = [];
