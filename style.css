@@ -454,3 +454,7 @@ body.tk-admin .tk{grid-template-columns:84px 1.8fr minmax(168px,1.1fr) 122px 50p
 .xle-modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px;flex-wrap:wrap}
 .xle-modal-danger{background:var(--c);border-color:var(--c);color:#fff}
 .xle-modal button:disabled{opacity:.5;cursor:not-allowed}
+
+/* 測試站：收合新增回報與已隱藏的舊版規劃 */
+#prForm[hidden],#prNew[hidden],.legacy[hidden]{display:none!important}
+#prNew{margin:0 0 14px}
