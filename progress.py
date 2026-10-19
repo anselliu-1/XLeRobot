@@ -41,6 +41,9 @@ def init():
           sent_at TEXT NOT NULL DEFAULT '', attempts INTEGER NOT NULL DEFAULT 0,
           next_try REAL NOT NULL DEFAULT 0, error TEXT NOT NULL DEFAULT '');
         ''')
+        cols={r[1] for r in c.execute("PRAGMA table_info(progress_reports)")}
+        if 'task_id' not in cols: c.execute("ALTER TABLE progress_reports ADD COLUMN task_id TEXT NOT NULL DEFAULT ''")
+        if 'task_name' not in cols: c.execute("ALTER TABLE progress_reports ADD COLUMN task_name TEXT NOT NULL DEFAULT ''")
         if 'event' not in {r[1] for r in c.execute('PRAGMA table_info(progress_outbox)')}:
             c.execute("ALTER TABLE progress_outbox ADD COLUMN event TEXT NOT NULL DEFAULT ''")
         for label,code in EVENTS.items():
@@ -147,7 +150,7 @@ def read_form(h):
             if total>MAX: raise ValueError('每筆附件合計上限 50MB')
             files.append((name,data))
         else:
-            if key not in ('reporter','subject','content','parent_id') or key in fields or len(data)>45000: raise ValueError('無效表單欄位')
+            if key not in ('reporter','subject','content','parent_id','task_id') or key in fields or len(data)>45000: raise ValueError('無效表單欄位')
             fields[key]=data.decode('utf-8',errors='strict')
     return fields,files
 
@@ -158,6 +161,10 @@ def list_reports(h):
     with A.LOCK, A.conn() as c:
         reports=[dict(r) for r in c.execute('SELECT * FROM progress_reports ORDER BY id')]
         for r in reports:
+            if r['task_id']:
+                current=c.execute('SELECT task FROM tasks WHERE id=?',(r['task_id'],)).fetchone()
+                r['task_display']=current['task'] if current else r['task_name']+'（原工作已移除）'
+            else: r['task_display']=''
             r['files']=[{**dict(f),'url':'/api/progress-files/'+f['id'] if not f['removed_at'] else None} for f in c.execute('SELECT id,name,size,removed_at,reason FROM progress_files WHERE report_id=?',(r['id'],))]
         people=sorted({r['reporter'] for r in reports})
         matched=[r['id'] for r in reports if (not who or r['reporter']==who) and (status=='all' or r['status']==status) and (not q or q in '\n'.join([r['reporter'],r['subject'],r['content']]+[f['name'] for f in r['files']]).casefold())]
@@ -190,6 +197,8 @@ def create(h):
         subject=text_field(fields.get('subject',''),200,'主題',True)
         content=text_field(fields.get('content',''),10000,'內容',True)
         parent=fields.get('parent_id','').strip()
+        task_id=fields.get('task_id','').strip()
+        if task_id and not re.fullmatch(r'[A-Za-z0-9_-]{1,40}',task_id): raise ValueError('無效工作關聯')
         if parent and not re.fullmatch(r'[1-9][0-9]{0,9}',parent): raise ValueError('無效接續回報')
         with A.LOCK, A.conn() as c:
             c.execute('BEGIN IMMEDIATE')
@@ -197,9 +206,16 @@ def create(h):
             if parent and (not old or old['status']!='valid'): raise ValueError('只能接續有效回報')
             root=old['root_id'] if old else None
             version=c.execute('SELECT COALESCE(MAX(version),0)+1 FROM progress_reports WHERE root_id=?',(root,)).fetchone()[0] if old else 1
-            if old: subject=old['subject']
-            rid=c.execute('INSERT INTO progress_reports(reporter,subject,content,created,parent_id,root_id,version) VALUES(?,?,?,?,?,?,?)',
-                          (reporter,subject,content,stamp(),int(parent) if parent else None,root,version)).lastrowid
+            if old:
+                subject=old['subject']
+                task_id=old['task_id']
+                task_name=old['task_name']
+            else:
+                t=c.execute('SELECT task FROM tasks WHERE id=?',(task_id,)).fetchone() if task_id else None
+                if task_id and not t: raise ValueError('找不到關聯工作，請重新選擇')
+                task_name=t['task'] if t else ''
+            rid=c.execute('INSERT INTO progress_reports(reporter,subject,content,created,parent_id,root_id,version,task_id,task_name) VALUES(?,?,?,?,?,?,?,?,?)',
+                          (reporter,subject,content,stamp(),int(parent) if parent else None,root,version,task_id,task_name)).lastrowid
             if not old: c.execute('UPDATE progress_reports SET root_id=? WHERE id=?',(rid,rid))
             for name,data in files:
                 fid=uuid.uuid4().hex
@@ -273,7 +289,25 @@ def route(h,method):
             origin=h.headers.get('Origin')
             if origin and urllib.parse.urlsplit(origin).netloc!=h.headers.get('Host'):
                 h._send(403,{'error':'不允許跨網站操作'}); return True
-        if method=='POST' and p=='/api/progress/settings':
+        if method=='POST' and re.fullmatch(r'/api/progress/[1-9][0-9]*/relink',p):
+            if not A.is_admin(h): h._send(403,{'error':'需要管理員'})
+            else:
+                d=h._body()
+                task_id=str(d.get('task_id','')).strip()
+                reason=str(d.get('reason','')).strip()
+                if not reason or len(reason)>500: raise ValueError('請填寫修正原因')
+                with A.LOCK,A.conn() as c:
+                    t=c.execute('SELECT task FROM tasks WHERE id=?',(task_id,)).fetchone() if task_id else None
+                    if task_id and not t: raise ValueError('找不到工作')
+                    rid=int(p.split('/')[3])
+                    old=c.execute('SELECT task_id,task_name FROM progress_reports WHERE id=?',(rid,)).fetchone()
+                    if not old: raise ValueError('找不到回報')
+                    new_name=t['task'] if t else ''
+                    c.execute('UPDATE progress_reports SET task_id=?,task_name=? WHERE id=?',(task_id,new_name,rid))
+                    c.execute('INSERT INTO progress_audit(report_id,action,actor,reason,created) VALUES(?,?,?,?,?)',
+                              (rid,'修正工作關聯','管理員',str(old['task_name'])+' → '+new_name+'；'+reason,stamp()))
+                h._send(200,{'ok':True})
+        elif method=='POST' and p=='/api/progress/settings':
             if not A.is_admin(h): h._send(403,{'error':'需要管理員'})
             else:
                 d=h._body()
