@@ -530,3 +530,40 @@ body.tk-admin .tk{grid-template-columns:84px 1.8fr minmax(168px,1.1fr) 122px 50p
 @media(max-width:700px){.pr-report-head,.pr-report-section{padding:14px 16px}.pr-trash-item{flex-direction:column}.pr-report-head{gap:8px}}
 
 #prTrashPanel[hidden],#prTrashOpen[hidden]{display:none!important}
+
+/* Staging: restore reliable native dropdown arrows instead of broken CSS images */
+#progress select,.xle-modal select.xle-modal-input,#fileadmin select{
+  appearance:auto!important;-webkit-appearance:menulist!important;
+  background-image:none!important;background-color:var(--surface)!important;
+  color:var(--ink)!important;padding:9px 18px 9px 12px!important;
+  text-overflow:ellipsis;min-width:0;
+}
+#progress select option,.xle-modal select option,#fileadmin select option{padding:6px 14px;background:var(--surface);color:var(--ink)}
+#prTrashOpen{display:inline-flex;align-items:center;justify-content:center;gap:7px;line-height:1.4;min-height:38px}
+#prTrashOpen svg{flex:none;display:block;width:16px;height:16px}
+#prTrashCount{display:inline-block}
+#fileadmin .bar input,#fileadmin .bar select{background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:9px 12px;min-height:40px}
+#fileadmin .file-selection-tools{display:flex;align-items:center;flex-wrap:wrap;gap:16px;margin:12px 0}
+#fileadmin .file-select-all{display:inline-flex;align-items:center;gap:8px;cursor:pointer}
+#fileadmin .file-select-all input{accent-color:var(--accent)}
+#fileadmin .file-selection-tools .muted{margin:0}
+#fileadmin .file-groups{display:flex;flex-direction:column;gap:14px;margin-top:14px}
+#fileadmin .file-group{border:1px solid var(--line);border-radius:var(--r);background:var(--card);overflow:hidden}
+#fileadmin .file-group>summary{cursor:pointer;display:flex;align-items:center;gap:12px;padding:16px 20px;list-style:none;flex-wrap:wrap}
+#fileadmin .file-group>summary::-webkit-details-marker{display:none}
+#fileadmin .file-group>summary:before{content:'▸';color:var(--accent);font-size:18px;transition:transform .15s}
+#fileadmin .file-group[open]>summary:before{transform:rotate(90deg)}
+#fileadmin .file-group[open]>summary{border-bottom:1px solid var(--line)}
+#fileadmin .file-group-title{font-weight:700}
+#fileadmin .file-group-desc{font-size:13px;color:var(--muted)}
+#fileadmin .file-group-count{margin-left:auto;font-size:13px;color:var(--muted);white-space:nowrap}
+#fileadmin .file-group-body{padding:16px 18px;display:flex;flex-direction:column;gap:12px}
+#fileadmin .file-group-body>.muted{margin:0}
+#fileadmin .file-entry{border-top:1px solid var(--line);margin:0}
+#fileadmin .file-entry>header{padding:12px 16px}
+#fileadmin .file-entry-body{padding:14px 16px 16px}
+#fileadmin .file-entry-body>p{margin:0 0 12px;overflow-wrap:anywhere;line-height:1.6}
+#fileadmin .file-entry-actions{display:flex;align-items:center;flex-wrap:wrap;gap:12px}
+#fileadmin .file-entry-actions label{display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+#fileadmin .file-entry-actions a{color:var(--accent);text-decoration:none}
+@media(max-width:700px){#fileadmin .file-group>summary{padding:13px 15px}#fileadmin .file-group-body{padding:12px}#fileadmin .file-group-desc{flex-basis:100%;order:3}}
