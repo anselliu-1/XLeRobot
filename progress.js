@@ -117,7 +117,9 @@
       if(!confirmed)return;
     }catch(e){$('#prMessage').textContent='無法開啟確認視窗：'+e.message;return;}
     finally{button.disabled=false;}
-    const body=new FormData(form); button.disabled=true; $('#prMessage').textContent='上傳並儲存中，請勿重複送出…';
+    const body=new FormData(form);
+    if(form.elements.parent_id.value)body.set('task_id',form.elements.task_id.value);
+    button.disabled=true; $('#prMessage').textContent='上傳並儲存中，請勿重複送出…';
     try {
       const d=await api('/api/progress',{method:'POST',body});
       resetForm();
