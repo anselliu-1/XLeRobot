@@ -36,12 +36,15 @@ def init():
           id INTEGER PRIMARY KEY AUTOINCREMENT, report_id INTEGER NOT NULL,
           action TEXT NOT NULL, actor TEXT NOT NULL, reason TEXT NOT NULL,
           file_id TEXT NOT NULL DEFAULT '', created TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS progress_deleted_audit(id INTEGER PRIMARY KEY AUTOINCREMENT,report_id INTEGER NOT NULL,subject TEXT NOT NULL,reporter TEXT NOT NULL,actor TEXT NOT NULL,reason TEXT NOT NULL,created TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS progress_outbox(
           id TEXT PRIMARY KEY, detail TEXT NOT NULL, created TEXT NOT NULL,
           sent_at TEXT NOT NULL DEFAULT '', attempts INTEGER NOT NULL DEFAULT 0,
           next_try REAL NOT NULL DEFAULT 0, error TEXT NOT NULL DEFAULT '');
         ''')
         cols={r[1] for r in c.execute("PRAGMA table_info(progress_reports)")}
+        for col,ddl in [('trash_at',"TEXT NOT NULL DEFAULT ''"),('trash_reason',"TEXT NOT NULL DEFAULT ''"),('trash_previous_status',"TEXT NOT NULL DEFAULT ''")]:
+            if col not in cols:c.execute('ALTER TABLE progress_reports ADD COLUMN '+col+' '+ddl)
         if 'task_id' not in cols: c.execute("ALTER TABLE progress_reports ADD COLUMN task_id TEXT NOT NULL DEFAULT ''")
         if 'task_name' not in cols: c.execute("ALTER TABLE progress_reports ADD COLUMN task_name TEXT NOT NULL DEFAULT ''")
         if 'event' not in {r[1] for r in c.execute('PRAGMA table_info(progress_outbox)')}:
@@ -159,7 +162,9 @@ def list_reports(h):
     q=query.get('q',[''])[0].strip().casefold()[:200]
     who=query.get('reporter',[''])[0]; status=query.get('status',['all'])[0]
     with A.LOCK, A.conn() as c:
-        reports=[dict(r) for r in c.execute('SELECT * FROM progress_reports ORDER BY id')]
+        is_admin=A.is_admin(h)
+        reports=[dict(r) for r in c.execute("SELECT * FROM progress_reports WHERE status!='trash' ORDER BY id")]
+        trash_count=c.execute("SELECT COUNT(*) FROM progress_reports WHERE status='trash'").fetchone()[0] if is_admin else 0
         for r in reports:
             if r['task_id']:
                 current=c.execute('SELECT task FROM tasks WHERE id=?',(r['task_id'],)).fetchone()
@@ -171,12 +176,15 @@ def list_reports(h):
         # Include full histories for matching topics, even if earlier versions do not match.
         roots={r['root_id'] for r in reports if r['id'] in matched}
         items=[r for r in reports if r['root_id'] in roots]
-        return h._send(200,{'items':items,'matched_ids':matched,'reporters':people,'admin':A.is_admin(h),'show_report_ids':(c.execute("SELECT v FROM meta WHERE k='progress_show_ids'").fetchone() or {'v':'0'})['v']=='1','export_all':(c.execute("SELECT v FROM meta WHERE k='progress_export_all'").fetchone() or {'v':'0'})['v']=='1','audit_all':(c.execute("SELECT v FROM meta WHERE k='progress_audit_all'").fetchone() or {'v':'0'})['v']=='1'})
+        return h._send(200,{'items':items,'matched_ids':matched,'reporters':people,'admin':A.is_admin(h),'show_report_ids':(c.execute("SELECT v FROM meta WHERE k='progress_show_ids'").fetchone() or {'v':'0'})['v']=='1','export_all':(c.execute("SELECT v FROM meta WHERE k='progress_export_all'").fetchone() or {'v':'0'})['v']=='1','audit_all':(c.execute("SELECT v FROM meta WHERE k='progress_audit_all'").fetchone() or {'v':'0'})['v']=='1','trash_count':trash_count})
 
 def download(h,fid):
     with A.LOCK, A.conn() as c:
         f=c.execute('SELECT * FROM progress_files WHERE id=?',(fid,)).fetchone()
     if not f or f['removed_at']: return h._send(404,{'error':'附件不存在或已移除'})
+    with A.LOCK,A.conn() as c:
+        report=c.execute('SELECT status FROM progress_reports WHERE id=?',(f['report_id'],)).fetchone()
+    if not report or report['status']=='trash':return h._send(404,{'error':'附件已移至垃圾桶'})
     if f['storage']=='bucket': data,_=A.s3_request('GET',f['object_key'])
     else:
         with open(os.path.join(A.UPLOAD_DIR, f['object_key']), 'rb') as stream: data=stream.read()
@@ -256,7 +264,15 @@ def moderate(h,rid,action):
         c.execute('BEGIN IMMEDIATE')
         r=c.execute('SELECT * FROM progress_reports WHERE id=?',(rid,)).fetchone()
         if not r: return h._send(404,{'error':'找不到回報'})
-        if action=='void':
+        if action=='trash':
+            if r['status']=='trash':return h._send(409,{'error':'回報已在垃圾桶'})
+            c.execute("UPDATE progress_reports SET trash_previous_status=status,status='trash',trash_at=?,trash_reason=? WHERE id=?",(stamp(),reason,rid))
+            c.execute('INSERT INTO progress_audit(report_id,action,actor,reason,created) VALUES(?,?,?,?,?)',(rid,'移至垃圾桶','已驗證管理員',reason,stamp()))
+        elif action=='untrash':
+            if r['status']!='trash':return h._send(409,{'error':'回報不在垃圾桶'})
+            c.execute("UPDATE progress_reports SET status=CASE WHEN trash_previous_status='void' THEN 'void' ELSE 'valid' END,trash_at='',trash_reason='',trash_previous_status='' WHERE id=?",(rid,))
+            c.execute('INSERT INTO progress_audit(report_id,action,actor,reason,created) VALUES(?,?,?,?,?)',(rid,'從垃圾桶還原','已驗證管理員',reason,stamp()))
+        elif action=='void':
             if r['status']!='valid': return h._send(409,{'error':'回報已作廢'})
             c.execute('UPDATE progress_reports SET status=\'void\',void_reason=?,void_at=? WHERE id=?',(reason,stamp(),rid))
             event(c,rid,'作廢回報','已驗證管理員',reason)
@@ -280,6 +296,45 @@ def moderate(h,rid,action):
         except Exception:
             return h._send(202,{'warning':'附件已停用下載，實體清除待重試'})
     return h._send(200,{'ok':True})
+
+def trash_list(h):
+    if not A.is_admin(h):return h._send(403,{'error':'需要已驗證的管理員'})
+    with A.LOCK,A.conn() as c:
+        rows=[dict(r) for r in c.execute("SELECT * FROM progress_reports WHERE status='trash' ORDER BY trash_at DESC")]
+        for r in rows:
+            r['files']=[dict(f) for f in c.execute('SELECT id,name,size,removed_at,reason FROM progress_files WHERE report_id=?',(r['id'],))]
+        deleted=[dict(r) for r in c.execute('SELECT * FROM progress_deleted_audit ORDER BY id DESC LIMIT 100')]
+    h._send(200,{'items':rows,'deleted':deleted})
+
+def permanently_delete(h,rid):
+    if not A.is_admin(h):return h._send(403,{'error':'需要已驗證的管理員'})
+    d=h._body()
+    if not isinstance(d,dict):raise ValueError('無效操作')
+    reason=text_field(d.get('reason',''),1000,'原因',True)
+    with A.LOCK,A.conn() as c:
+        c.execute('BEGIN IMMEDIATE')
+        r=c.execute('SELECT * FROM progress_reports WHERE id=?',(rid,)).fetchone()
+        if not r:return h._send(404,{'error':'找不到回報'})
+        if r['status']!='trash':return h._send(409,{'error':'僅能永久刪除垃圾桶內的回報'})
+        if c.execute('SELECT 1 FROM progress_reports WHERE parent_id=? LIMIT 1',(rid,)).fetchone():
+            return h._send(409,{'error':'此回報仍有接續回報，請先從最新的接續回報開始處理'})
+        files=[dict(f) for f in c.execute('SELECT * FROM progress_files WHERE report_id=?',(rid,))]
+        c.execute('INSERT INTO progress_deleted_audit(report_id,subject,reporter,actor,reason,created) VALUES(?,?,?,?,?,?)',
+                  (rid,r['subject'],r['reporter'],'已驗證管理員',reason,stamp()))
+        c.execute('DELETE FROM progress_audit WHERE report_id=?',(rid,))
+        c.execute('DELETE FROM progress_files WHERE report_id=?',(rid,))
+        c.execute('DELETE FROM progress_reports WHERE id=?',(rid,))
+    failures=[]
+    for f in files:
+        if f['cleared_at']:continue
+        try:
+            if f['storage']=='bucket':A.s3_request('DELETE',f['object_key'])
+            else:os.remove(os.path.join(A.UPLOAD_DIR,f['object_key']))
+        except FileNotFoundError:pass
+        except Exception as exc:
+            failures.append(f['object_key'])
+            print('progress permanent delete storage cleanup failed:',repr(exc),flush=True)
+    return h._send(200,{'ok':True,'warning':'資料庫已刪除，部分附件儲存清理失敗，需管理員追查' if failures else ''})
 
 def route(h,method):
     p=h._path()
@@ -320,10 +375,12 @@ def route(h,method):
                     if 'export_all' in d:c.execute("INSERT OR REPLACE INTO meta(k,v) VALUES('progress_export_all',?)",('1' if d['export_all'] else '0',))
                     if 'audit_all' in d:c.execute("INSERT OR REPLACE INTO meta(k,v) VALUES('progress_audit_all',?)",('1' if d['audit_all'] else '0',))
                 h._send(200,{'ok':True})
+        elif method=='GET' and p=='/api/progress/trash':trash_list(h)
+        elif method=='POST' and re.fullmatch(r'/api/progress/[1-9][0-9]*/delete',p):permanently_delete(h,int(p.split('/')[3]))
         elif method=='GET' and p=='/api/progress': list_reports(h)
         elif method=='GET' and re.fullmatch('/api/progress-files/[a-f0-9]{32}',p): download(h,p.rsplit('/',1)[1])
         elif method=='POST' and p=='/api/progress': create(h)
-        elif method=='POST' and re.fullmatch(r'/api/progress/[1-9][0-9]*/(void|restore|remove-file)',p):
+        elif method=='POST' and re.fullmatch(r'/api/progress/[1-9][0-9]*/(void|restore|remove-file|trash|untrash)',p):
             _,_,_,rid,action=p.split('/'); moderate(h,int(rid),action)
         elif method=='GET' and re.fullmatch(r'/api/progress/[1-9][0-9]*/audit',p):
             with A.LOCK,A.conn() as c:
