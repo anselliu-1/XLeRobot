@@ -8,7 +8,7 @@
 .pr-report{margin:14px 0;padding:20px;border:1px solid var(--line,#8886);border-radius:12px}
 .pr-report header{display:flex;gap:12px;align-items:start;justify-content:space-between}.pr-report h3{margin:0;overflow-wrap:anywhere}
 .pr-content{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.8;margin:18px 0}
-.pr-files{padding-left:22px;overflow-wrap:anywhere}.pr-files li{margin:10px 0}
+.pr-files{padding-left:22px;overflow-wrap:anywhere}.pr-files li{margin:10px 0}.pr-files a{color:var(--accent,#69d3c1);text-underline-offset:3px}.pr-files a:hover{opacity:.8}
 .pr-topic{margin:20px 0}.pr-topic>summary{font-size:1.1rem;cursor:pointer;padding:14px;background:var(--panel,#8881);border-radius:8px;overflow-wrap:anywhere}
 .pr-void{border-style:dashed}.pr-reason{border-left:3px solid #b76e34;padding:12px;background:#b76e3412;overflow-wrap:anywhere}
 .pr-audit{font-size:.85rem;overflow-wrap:anywhere}.pr-audit:not(:empty){margin-top:18px;border-top:1px solid var(--line,#8886)}

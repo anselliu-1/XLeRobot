@@ -2,6 +2,7 @@
   const $ = s => document.querySelector(s), form = $('#prForm');
   const esc = s => String(s ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const headers = () => ({'X-Admin-Key':localStorage.getItem('xle-admin') || ''});
+  const fileSize = n => n<1024 ? n+' bytes' : n<1024*1024 ? (n/1024).toFixed(1)+' KB' : (n/1024/1024).toFixed(2)+' MB';
   let items = [], matched = new Set(), admin = false, request = 0, timer;
   const date = s => new Intl.DateTimeFormat('zh-TW',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date(s))+'（台灣）';
   async function api(url,options={}) {
@@ -16,7 +17,7 @@
       <p class="muted">${esc(r.reporter)} · ${esc(date(r.created))}${r.parent_id?' · 接續 #'+r.parent_id:''}</p>
       <div class="pr-content">${esc(r.content) || '（無文字內容）'}</div>
       ${r.status==='void'?`<p class="pr-reason">作廢原因：${esc(r.void_reason)}<br>${esc(date(r.void_at))}</p>`:''}
-      <ul class="pr-files">${r.files.map(f=>`<li>${f.removed_at?`<span>${esc(f.name)}（已移除：${esc(f.reason)}）</span>`:`<a href="${f.url}">${esc(f.name)}</a> · ${(f.size/1024/1024).toFixed(2)} MB${admin && r.status==='void'?` <button class="btn ghost" data-remove="${f.id}" data-report="${r.id}">移除附件</button>`:''}`}</li>`).join('')}</ul>
+      <ul class="pr-files">${r.files.map(f=>`<li>${f.removed_at?`<span>${esc(f.name)}（已移除：${esc(f.reason)}）</span>`:`<a href="${f.url}">${esc(f.name)}</a> · ${fileSize(f.size)}${admin && r.status==='void'?` <button class="btn ghost" data-remove="${f.id}" data-report="${r.id}">移除附件</button>`:''}`}</li>`).join('')}</ul>
       <div class="pr-actions">${r.status==='valid'?`<button class="btn ghost" data-continue="${r.id}">接續此回報</button>`:''}
       ${admin?`${r.status==='valid'?`<button class="btn ghost" data-void="${r.id}">作廢（填原因）</button>`:''}<button class="btn ghost" data-audit="${r.id}">操作紀錄</button>`:''}</div>
       <div class="pr-audit" data-audit-list="${r.id}"></div></article>`;
