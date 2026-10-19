@@ -7,7 +7,8 @@
   let pendingLoads = 0, lastSnapshot = '';
   const date = s => new Intl.DateTimeFormat('zh-TW',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date(s))+'（台灣）';
   async function api(url,options={}) {
-    const response = await fetch(url,{cache:'no-store',signal:AbortSignal.timeout(15000),...options});
+    const readTimeout = !options.method || options.method==='GET' ? {signal:AbortSignal.timeout(15000)} : {};
+    const response = await fetch(url,{cache:'no-store',...readTimeout,...options});
     const data = await response.json();
     if(!response.ok) throw Error(data.error || '操作失敗');
     return data;
