@@ -4,7 +4,7 @@
   const headers = () => ({'X-Admin-Key':localStorage.getItem('xle-admin') || ''});
   const fileSize = n => n<1024 ? n+' bytes' : n<1024*1024 ? (n/1024).toFixed(1)+' KB' : (n/1024/1024).toFixed(2)+' MB';
   const syncMessage = (text,state='') => {const el=$('#prSync');if(!el)return;const span=el.querySelector('span');if(span&&span.textContent!==text)span.textContent=text;el.className='sync '+(state==='connected'?'ok':state==='error'?'bad':'');};
-  let items = [], matched = new Set(), admin = false, showReportIds = false, exportAll = false, request = 0, timer;
+  let items = [], matched = new Set(), admin = false, showReportIds = false, exportAll = false, auditAll = false, request = 0, timer;
   let pendingLoads = 0, lastSnapshot = '', taskFilter = '';
   let taskOptions = [];
   const draftFields = () => JSON.stringify(['reporter','subject','content'].map(k=>form.elements[k].value.trim()));
@@ -57,7 +57,7 @@
       <div class="pr-actions">${r.status==='valid'?`<button class="btn ghost" data-continue="${r.id}">接續此回報</button>`:''}
       ${admin?`<button class="btn ghost" data-relink="${r.id}">修正工作關聯</button>`:""}
       ${(admin||exportAll)?`<button class="btn ghost" data-export="${r.id}">匯出本筆</button>`:''}
-      ${admin?`${r.status==='valid'?`<button class="btn ghost" data-void="${r.id}">作廢</button>`:`<button class="btn ghost" data-restore="${r.id}">恢復有效</button>`}<button class="btn ghost" data-audit="${r.id}">操作紀錄</button>`:''}</div>
+      ${(admin||auditAll)?`${admin?(r.status==='valid'?`<button class="btn ghost" data-void="${r.id}">作廢</button>`:`<button class="btn ghost" data-restore="${r.id}">恢復有效</button>`):''}<button class="btn ghost" data-audit="${r.id}">操作紀錄</button>`:''}</div>
       <div class="pr-audit" data-audit-list="${r.id}"></div></article>`;
   }
   function render() {
@@ -87,7 +87,8 @@
       if(seq!==request)return;
       const snapshot=JSON.stringify(d);
       if(snapshot!==lastSnapshot){
-        items=d.items; matched=new Set(d.matched_ids); admin=d.admin; showReportIds=!!d.show_report_ids; exportAll=!!d.export_all;
+        items=d.items; matched=new Set(d.matched_ids); admin=d.admin; showReportIds=!!d.show_report_ids; exportAll=!!d.export_all; auditAll=!!d.audit_all;
+        if(auditPermission && admin && document.activeElement!==auditPermission)auditPermission.checked=auditAll;
         $('#prExportPanel').hidden=!(admin||exportAll);
         if(exportPermission && admin && document.activeElement!==exportPermission)exportPermission.value=exportAll?'all':'admin';
         if(settingsToggle && admin && document.activeElement!==settingsToggle)settingsToggle.checked=showReportIds;
@@ -211,6 +212,15 @@
     finally{button.disabled=false;}
   }
   $('#prExportGo').onclick=()=>doExport($('#prExportScope').value);
+  const auditPermission=$('#prAuditPermission'),auditPermissionMsg=$('#prAuditPermissionMsg');
+  if(auditPermission)auditPermission.onchange=async()=>{
+    auditPermission.disabled=true;auditPermissionMsg.textContent='儲存中…';
+    try{
+      await api('/api/progress/settings',{method:'POST',headers:{...headers(),'Content-Type':'application/json'},body:JSON.stringify({audit_all:auditPermission.checked})});
+      auditPermissionMsg.textContent='已儲存';await load();
+    }catch(e){auditPermission.checked=!auditPermission.checked;auditPermissionMsg.textContent='儲存失敗：'+e.message;}
+    finally{auditPermission.disabled=false;}
+  };
   const settingsToggle=$('#progressShowIds'),settingsMsg=$('#progressShowIdsMsg');
   if(settingsToggle)settingsToggle.onchange=async()=>{
     settingsToggle.disabled=true;settingsMsg.textContent='儲存中…';
