@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261007a">
+<link rel="stylesheet" href="style.css?v=20261019m">
 <link rel="stylesheet" href="progress.css?v=20261019b">
 </head>
 <body>
@@ -32,7 +32,7 @@
     <button data-view="power">供電方案</button>
     <button data-view="risks">困難與展出</button>
     <button data-view="prof">評審提問與答辯準備</button>
-    <button data-view="rules">歸還守則</button>
+    <button data-view="rules" data-admin-tab hidden>歸還守則</button>
     <button data-view="fileadmin" data-admin-tab hidden>檔案管理</button>
     <button data-view="adminsettings" data-admin-tab hidden>管理員設定</button>
 
@@ -85,10 +85,11 @@
     <article class="hw"><header><h3>② 前往貨架</h3></header><p>車體移動至指定貨架前。</p></article>
     <article class="hw"><header><h3>③ 視覺辨識與夾取</h3></header><p>攝影機辨識目標，機械手臂取物。</p></article>
     <article class="hw"><header><h3>④ 商品交付</h3></header><p>車體前往交付區，手臂交付商品。</p></article></div>
-    <h2 class="sec">近期工作</h2><div class="hwgrid">
-    <article class="hw"><header><h3>10/17 前｜展示配置示意圖</h3></header><p>標示展示現場物品分布與擺放方式。</p></article>
-    <article class="hw"><header><h3>10/17 前｜操作流程圖</h3></header><p>呈現選物、移動、辨識、夾取與交付。</p></article>
-    <article class="hw"><header><h3>待排程｜採購清單</h3></header><p>整理規格、價格與購買管道，負責人尚未指定。</p></article></div>
+    <h2 class="sec">專題整體進度</h2>
+    <p class="muted">完成比例以工作主題的已完成狀態計算，進度回報數量不代表完成百分比。</p>
+    <div class="hwgrid" id="overviewStats"><article class="hw"><p class="muted">載入整體進度中…</p></article></div>
+    <article class="hw" style="margin-top:14px"><header><h3>工作主題完成比例</h3></header><div class="overview-track"><i id="overviewProgressBar"></i></div><p id="overviewProgressLabel" class="muted">讀取中…</p></article>
+    <h3 class="sec">各工作主題進度</h3><div class="hwgrid" id="overviewTopics"><p class="muted">讀取中…</p></div>
     <details class="legacy"><summary>歷史規劃與舊版總覽（2026-10-05 以前）</summary><div class="legacy-body">
     <h2 class="sec">目前暫定研究方向</h2>
     <article class="plan dircard">
@@ -158,8 +159,8 @@
   </section>
   <!-- 檔案管理：後端提供管理員專用清單 -->
   <section class="view" id="fileadmin">
-    <h2 class="sec first">檔案管理</h2><p class="muted">集中查看分工附件、商品圖片及報銷憑證。僅管理員可存取。</p>
-    <div class="bar"><input id="fileSearch" placeholder="搜尋檔名、任務或商品"><select id="fileType"><option value="all">全部類型</option><option value="task">分工附件</option><option value="image">商品圖片</option><option value="receipt">報銷憑證</option></select><button class="btn ghost" id="fileRefresh">重新整理</button><button class="btn" id="fileZip">下載勾選檔案 ZIP</button></div>
+    <h2 class="sec first">檔案管理</h2><p class="muted">集中查看歷史分工附件、進度回報附件、商品圖片及報銷憑證。僅管理員可存取。</p>
+    <div class="bar"><input id="fileSearch" placeholder="搜尋檔名、回報主題、回報人、工作或商品"><select id="fileType"><option value="all">全部類型</option><option value="task">分工附件</option><option value="progress">進度回報附件</option><option value="image">商品圖片</option><option value="receipt">報銷憑證</option></select><button class="btn ghost" id="fileRefresh">重新整理</button><button class="btn" id="fileZip">下載勾選檔案 ZIP</button></div>
     <p id="fileMsg" class="muted"></p><div id="fileItems"></div>
   </section>
   <!-- 討論重點 -->
@@ -315,7 +316,7 @@
   <!-- 分工&時程 -->
   <section class="view" id="plan">
     <h2 class="sec first">分工 &amp; 時程</h2>
-    <p class="muted">全組共用同一份清單，所有人的畫面約 3 秒內同步。做完工作時請勾選「回報完成」，系統會自動記下日期與時間；並於成果欄填寫量測數據或文件連結。</p>
+    <p class="muted">全組共用工作主題與目標，管理員可設定完成權限；各階段成果與新附件請統一至「進度回報」新增。</p>
     <div class="sync" id="tkSync"><i></i><span>連線中…</span></div>
 
     <div class="tkstats" id="tkStats"></div>
@@ -438,13 +439,14 @@
   </aside>
 </div>
 
+<script src="modal.js?v=20261019a"></script>
 <script src="data.js?v=20261007a"></script>
 <script src="app.js?v=20261019g"></script>
-<script src="tasks.js?v=20261019k"></script>
+<script src="tasks.js?v=20261019m"></script>
 <script src="purchases.js?v=20261019f"></script>
-<script src="admin-pages.js?v=20261019g"></script>
+<script src="admin-pages.js?v=20261019m"></script>
 <script src="risks-admin.js?v=20261012a"></script>
-<script src="progress.js?v=20261019k"></script>
+<script src="progress.js?v=20261019m"></script>
 <script>
 async function loadSiteInfo() {
   try {
