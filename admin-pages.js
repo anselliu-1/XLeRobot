@@ -59,7 +59,7 @@
       topics.innerHTML=tasks.length?tasks.map(t=>'<article class="hw"><header><h3>'+esc(t.task)+'</h3></header><p>'+(t.done?'已完成':'進行中')+' · '+(t.report_count||0)+' 筆進度回報</p>'+(t.latest_report?'<p class="muted">最近更新：'+esc(t.latest_report.created.slice(0,16))+'</p>':'<p class="muted">尚無關聯回報</p>')+'</article>').join(''):'<p class="muted">尚無工作主題。</p>';
     }catch(e){stats.textContent='進度載入失敗：'+e.message;topics.textContent='請稍後重新整理。';}
   }
-  $('[data-view="overview"]').forEach(b=>b.addEventListener('click',loadOverview));
+  document.querySelectorAll('[data-view="overview"]').forEach(b=>b.addEventListener('click',loadOverview));
   loadOverview();
   $('#fileSearch').addEventListener('input',render);
   $('#fileType').addEventListener('change',render);
