@@ -83,6 +83,46 @@ class StagingFixTests(unittest.TestCase):
         self.assertEqual(hdr['Cache-Control'],'no-store')
         self.assertEqual(self.req('/admin-files.js')[0],200)
 
+    def test_export_timestamps_in_taiwan_time_without_microseconds(self):
+        self.assertEqual(progress_export.display_time('2026-10-19T18:43:56.668071+08:00'),'2026/10/19 18:43:56')
+        self.assertEqual(progress_export.display_time('2026-10-19T20:43:56.668071Z'),'2026/10/20 04:43:56')
+        self.assertEqual(progress_export.display_time('2026-10-19T18:43:56'),'2026/10/19 18:43:56')
+        self.assertEqual(progress_export.display_time(''),'時間未提供')
+        self.assertEqual(progress_export.display_time('legacy unknown'),'legacy unknown')
+        rid=self.create()[1]['id']
+        paragraphs=[]
+        original=progress_export.Paragraph
+        def capture(text,style):
+            paragraphs.append(text);return original(text,style)
+        with patch.object(progress_export,'Paragraph',side_effect=capture):
+            code,pdf,_=self.req('/api/progress/export','POST',{'format':'pdf'},True)
+        self.assertEqual(code,200);self.assertTrue(pdf.startswith(b'%PDF-'))
+        self.assertIn('時間均為台灣時間（UTC+8）',paragraphs)
+        dates=[t for t in paragraphs if t.startswith(('回報時間：','操作紀錄：'))]
+        self.assertTrue(dates)
+        for text in dates:
+            self.assertNotIn('T',text);self.assertNotIn('+08:00',text)
+
+    def test_task_completion_uses_completion_events_not_edit_event(self):
+        # Only completion/reopen are selected; content edits must not be required.
+        with app.conn() as c:
+            c.execute("UPDATE tasks SET done=0,done_date='' WHERE id='s0'")
+            c.execute("INSERT OR REPLACE INTO meta VALUES('notify_config',?)",(json.dumps({'enabled':True,'mode':'instant','events':['task_done','task_reopen']}),))
+        self.assertEqual(self.req('/api/tasks/s0','PATCH',{'done':True},True)[0],200)
+        with app.conn() as c:
+            self.assertEqual([r['event'] for r in c.execute('SELECT event FROM notify_queue ORDER BY created')],['task_done'])
+        # An unchanged checkbox must not send a second completion notification.
+        self.assertEqual(self.req('/api/tasks/s0','PATCH',{'done':True},True)[0],200)
+        self.assertEqual(self.req('/api/tasks/s0','PATCH',{'done':False},True)[0],200)
+        with app.conn() as c:
+            self.assertEqual([r['event'] for r in c.execute('SELECT event FROM notify_queue ORDER BY created')],['task_done','task_reopen'])
+            c.execute("DELETE FROM notify_queue")
+            c.execute("INSERT OR REPLACE INTO meta VALUES('notify_config',?)",(json.dumps({'enabled':True,'mode':'instant','events':['task_edit']}),))
+        self.assertEqual(self.req('/api/tasks/s0','PATCH',{'done':True},True)[0],200)
+        with app.conn() as c:self.assertFalse(c.execute('SELECT 1 FROM notify_queue').fetchone())
+        self.assertEqual(self.req('/api/tasks/s0','PATCH',{'note':'ordinary edit'},True)[0],200)
+        with app.conn() as c:self.assertEqual(c.execute('SELECT event FROM notify_queue').fetchone()[0],'task_edit')
+
     def test_notification_queue_survives_restart_and_respects_controls(self):
         cfg={'enabled':True,'mode':'instant','events':['buy_add']}
         with app.conn() as c:
@@ -125,5 +165,19 @@ class StagingFixTests(unittest.TestCase):
             progress.retry_cleanup();delete.assert_called_once_with('DELETE',f['object_key'])
             progress.retry_cleanup();delete.assert_called_once()
         with app.conn() as c:self.assertTrue(c.execute('SELECT completed FROM progress_cleanup WHERE id=?',(f['id'],)).fetchone()[0])
+
+    def test_task_notification_failure_keeps_queue_and_error(self):
+        cfg={'enabled':True,'mode':'instant','events':['task_done']}
+        with app.conn() as c:
+            c.execute("INSERT OR REPLACE INTO meta VALUES('notify_config',?)",(json.dumps(cfg),))
+            c.execute("INSERT INTO notify_queue(id,event,subject,detail,created,sent) VALUES('retry','task_done','test','test',100,0)")
+        class Stop(BaseException):pass
+        def stop(_):raise Stop()
+        error=app.urllib.error.HTTPError('https://discord.invalid/test',429,'rate limited',{},None)
+        with patch.dict(os.environ,{'DISCORD_WEBHOOK_URL':'https://discord.invalid/test'}),patch.object(app.urllib.request,'urlopen',side_effect=error),patch.object(app.time,'sleep',side_effect=stop):
+            with self.assertRaises(Stop):app.mail_worker()
+        with app.conn() as c:
+            row=c.execute("SELECT sent,error FROM notify_queue WHERE id='retry'").fetchone()
+            self.assertEqual((row['sent'],row['error']),(0,'HTTP 429'))
 
 if __name__=='__main__':unittest.main()

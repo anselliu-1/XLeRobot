@@ -280,6 +280,7 @@ def pending_notifications(c, cfg, now):
 def mail_worker():
 
     while True:
+        items=[]
         try:
             webhook = os.environ.get(
                 "DISCORD_WEBHOOK_URL", ""
@@ -349,11 +350,16 @@ def mail_worker():
                         """,
                         [(x["id"],) for x in items]
                     )
+                print('task/purchase notification delivered:',','.join(x['id'] for x in items),flush=True)
 
         except Exception as exc:
+            error='HTTP '+str(exc.code) if isinstance(exc,urllib.error.HTTPError) else type(exc).__name__
+            if items:
+                with LOCK,conn() as c:
+                    c.executemany('UPDATE notify_queue SET error=? WHERE id=? AND sent=0',[(error,x['id']) for x in items])
             print(
                 "discord notification failed:",
-                type(exc).__name__,
+                error,
                 flush=True
             )
 
@@ -854,7 +860,10 @@ class H(BaseHTTPRequestHandler):
             current.update(o)
             summary = notify_fields(current, TASK_NOTIFY_FIELDS)
             changes = notify_changes(cur, current, TASK_NOTIFY_FIELDS)
-            if o.get('member_done') == 1 and not cur['member_done']:
+            if 'done' in o and bool(o['done']) != bool(cur['done']):
+                queue_notify(c,'task_done' if o['done'] else 'task_reopen',
+                             '分工確認完成' if o['done'] else '分工取消完成',summary)
+            elif o.get('member_done') == 1 and not cur['member_done']:
                 queue_notify(c,'task_done','組員回報完成',summary)
             elif o.get('member_done') == 0 and cur['member_done']:
                 queue_notify(c,'task_reopen','取消完成回報',summary)

@@ -1,13 +1,24 @@
 """Progress export: PDF report and original attachments in ZIP, with server-side permissions."""
 import io, os, re, json, zipfile
 from xml.sax.saxutils import escape
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, KeepTogether
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.enums import TA_LEFT
 from reportlab.lib import colors
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+
+TAIWAN_TZ=timezone(timedelta(hours=8))
+
+def display_time(value):
+    if not value:return '時間未提供'
+    try:
+        dt=datetime.fromisoformat(str(value).replace('Z','+00:00'))
+        # Legacy timestamps without an offset were already recorded in Taiwan time.
+        if dt.tzinfo is None:dt=dt.replace(tzinfo=TAIWAN_TZ)
+        return dt.astimezone(TAIWAN_TZ).strftime('%Y/%m/%d %H:%M:%S')
+    except (ValueError,TypeError,OverflowError):return str(value)
 
 def pdf_report(rows, audit, generated):
     pdfmetrics.registerFont(UnicodeCIDFont('STSong-Light'))
@@ -17,15 +28,15 @@ def pdf_report(rows, audit, generated):
     heading=ParagraphStyle('xle-heading',fontName='STSong-Light',fontSize=12,leading=20,spaceBefore=14,spaceAfter=7,textColor=colors.HexColor('#12394a'))
     body=ParagraphStyle('xle-body',fontName='STSong-Light',fontSize=10,leading=17,spaceAfter=5,wordWrap='CJK')
     def line(text):return Paragraph(escape(str(text or '')).replace('\n','<br/>'),body)
-    story=[Paragraph('XLeRobot 進度回報彙整',title),line('匯出時間：'+generated),line('回報筆數：'+str(len(rows)))]
+    story=[Paragraph('XLeRobot 進度回報彙整',title),line('匯出時間：'+generated),line('時間均為台灣時間（UTC+8）'),line('回報筆數：'+str(len(rows)))]
     for r in rows:
         story.append(Paragraph(escape(r['subject'])+' · 第 '+str(r['version'])+' 次回報',heading))
-        for label,value in [('回報編號',r['id']),('回報人',r['reporter']),('回報時間',r['created']),('關聯工作',r['task_name'] or '未關聯'),('狀態','已作廢' if r['status']=='void' else '有效'),('接續來源',r['parent_id'] or '無'),('回報內容',r['content'])]:
+        for label,value in [('回報編號',r['id']),('回報人',r['reporter']),('回報時間',display_time(r['created'])),('關聯工作',r['task_name'] or '未關聯'),('狀態','已作廢' if r['status']=='void' else '有效'),('接續來源',r['parent_id'] or '無'),('回報內容',r['content'])]:
             story.append(line(label+'：'+str(value)))
         files=r['files']
         story.append(line('附件：'+('、'.join(f['name']+('（已移除：'+f['reason']+'）' if f['removed_at'] else '') for f in files) if files else '無')))
         for a in audit.get(r['id'],[]):
-            story.append(line('操作紀錄：'+a['created']+'／'+a['action']+'／'+a['reason']))
+            story.append(line('操作紀錄：'+display_time(a['created'])+'／'+a['action']+'／'+a['reason']))
         story.append(Spacer(1,8))
     doc.build(story)
     return out.getvalue()
