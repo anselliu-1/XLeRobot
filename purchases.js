@@ -19,7 +19,7 @@
       <div class="buy-images">${(p.images||[]).map(i=>`<figure><a href="${esc(i.url)}" target="_blank" rel="noopener"><img class="buy-photo" src="${esc(i.url)}" alt="${esc(i.original_name)}" loading="lazy"></a><figcaption class="muted">${esc(i.original_name)}</figcaption>${admin?`<button class="btn ghost" data-delimg="${i.id}">刪除圖片</button>`:''}</figure>`).join('')}</div>
       ${admin||perms.refund_view?`<details class="legacy"><summary>報銷管理：${esc(p.refund||'未開始')}</summary><div class="legacy-body">
       ${admin||perms.refund_edit?`<label>報銷狀態<select data-refund="${p.id}">${['未開始','待送件','審核中','已完成','不需報銷'].map(x=>`<option ${x===p.refund?'selected':''}>${x}</option>`).join('')}</select></label><button class="btn ghost" data-save-refund="${p.id}">儲存報銷狀態</button>`:`<p>${esc(p.refund||'未開始')}</p>`}
-      ${admin?`<h4>報銷附件（僅管理員可存取）</h4><div class="buy-receipts">${(p.receipts||[]).map(r=>`<p><a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.original_name)} ↗</a> <button class="btn ghost" data-delreceipt="${r.id}">刪除附件</button></p>`).join('')}</div><label class="btn ghost">上傳發票／報銷表 <input type="file" data-receipt="${p.id}" accept=".pdf,image/jpeg,image/png,image/webp" multiple hidden></label>`:''}</div></details>`:''}
+      ${admin?`<h4>報銷附件（僅管理員可存取）</h4><div class="buy-receipts">${(p.receipts||[]).map(r=>`<p><a href="${esc(r.url)}" data-admin-file data-file-name="${esc(r.original_name)}" target="_blank" rel="noopener">${esc(r.original_name)} ↗</a> <button class="btn ghost" data-delreceipt="${r.id}">刪除附件</button></p>`).join('')}</div><label class="btn ghost">上傳發票／報銷表 <input type="file" data-receipt="${p.id}" accept=".pdf,image/jpeg,image/png,image/webp" multiple hidden></label>`:''}</div></details>`:''}
       <div class="bar"><button class="btn ghost" data-edit="${p.id}">編輯</button><label class="btn ghost" style="cursor:pointer">上傳商品圖片 <input type="file" accept="image/jpeg,image/png,image/webp" data-upload="${p.id}" multiple hidden></label>${admin?`<button class="btn ghost" data-del="${p.id}">刪除項目</button>`:''}</div>
     </article>`).join(''):'<p class="muted">尚無採購項目，可由組員新增。</p>';
   }
@@ -56,15 +56,37 @@
     try{await req(path+id,'DELETE');await load();}catch(e){alert('刪除失敗：'+e.message)}
   });
   $('#buyCSV').onclick=()=>{const cols=['name','spec','qty','price','actual_price','stock','status','owner','url','note','updated'];if(admin||perms.refund_view)cols.push('refund');const csv='\uFEFF'+[cols.join(','),...purchases.map(p=>cols.map(k=>'"'+String(p[k]??'').replace(/"/g,'""')+'"').join(','))].join('\r\n');const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='XLeRobot_採購清單.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
-  const events={task_add:'分工：新增任務',task_edit:'分工：修改任務內容',task_done:'分工：回報完成',task_reopen:'分工：取消完成',task_result:'分工：成果文字更新',task_upload:'分工：上傳成果附件',task_delete:'分工：刪除任務或附件',buy_add:'採購：新增項目',buy_edit:'採購：修改資料',buy_status:'採購：狀態更新',buy_image:'採購：上傳圖片',buy_delete:'採購：刪除項目或圖片',buy_stock:'採購：庫存確認更新',buy_owner:'採購：指派或更換負責人',buy_refund:'採購：報銷狀態更新'};
+  const events={task_add:'分工：新增任務',task_edit:'分工：修改任務內容',task_done:'分工：回報完成',task_reopen:'分工：取消完成',task_result:'分工：成果文字更新',task_upload:'分工：上傳成果附件',task_delete:'分工：刪除任務或附件',buy_add:'採購：新增項目',buy_edit:'採購：修改資料',buy_status:'採購：狀態更新',buy_image:'採購：上傳圖片',buy_delete:'採購：刪除項目或圖片',buy_stock:'採購：庫存確認更新',buy_owner:'採購：指派或更換負責人',buy_refund:'採購：報銷狀態更新',progress_add:'進度回報：新增回報',progress_continue:'進度回報：接續回報',progress_void:'進度回報：作廢回報',progress_file_remove:'進度回報：附件移除',progress_restore:'進度回報：恢復有效'};
   $('#notifyEvents').innerHTML=Object.entries(events).map(([id,name])=>`<label><input type="checkbox" value="${id}"> ${name}</label>`).join('');
   $('#refundView').onchange=()=>{if(!$('#refundView').checked)$('#refundEdit').checked=false;$('#refundEdit').disabled=!$('#refundView').checked;};
   $('#purchasePermSave').onclick=async()=>{try{perms=await req('/api/purchases/permissions','POST',{refund_view:$('#refundView').checked,refund_edit:$('#refundEdit').checked});$('#purchasePermMsg').textContent='權限已儲存';await load();}catch(e){$('#purchasePermMsg').textContent='儲存失敗：'+e.message}};
-  $('#notifySave').onclick=async()=>{try{await req('/api/notifications/config','POST',{enabled:$('#notifyEnabled').checked,mode:$('#notifyMode').value,events:[...$('#notifyEvents').querySelectorAll('input:checked')].map(i=>i.value)});$('#notifyMsg').textContent='設定已儲存';}catch(e){$('#notifyMsg').textContent='儲存失敗：'+e.message}};
-  async function checkAdmin(){let next=false;try{next=!!key()&&(await fetch(API+'/api/auth',{headers:headers()})).ok;}catch{}const changed=next!==admin;admin=next;$('#notifyPanel').hidden=!admin;$('#purchasePermissionsPanel').hidden=!admin;$('#buyOwnerField').hidden=!admin;if(changed){await load(true);window.dispatchEvent(new CustomEvent('xle-admin-change',{detail:{admin}}));}if(admin){try{const c=await req('/api/notifications/config');$('#notifyEnabled').checked=c.enabled;$('#notifyMode').value=c.mode;$('#notifyEvents').querySelectorAll('input').forEach(i=>i.checked=c.events.includes(i.value));const p=await req('/api/purchases/permissions');$('#refundView').checked=p.refund_view;$('#refundEdit').checked=p.refund_edit;$('#refundEdit').disabled=!p.refund_view;}catch{}}}
+  let notifyEdits=0,notifySavedEdits=0;
+  $('#notifyPanel').addEventListener('change',e=>{if(e.target.matches('input,select'))notifyEdits++;});
+  $('#notifySave').onclick=async()=>{const revision=notifyEdits;try{await req('/api/notifications/config','POST',{enabled:$('#notifyEnabled').checked,mode:$('#notifyMode').value,events:[...$('#notifyEvents').querySelectorAll('input:checked')].map(i=>i.value)});notifySavedEdits=revision;$('#notifyMsg').textContent='設定已儲存';loadNotifyStatus();}catch(e){$('#notifyMsg').textContent='儲存失敗：'+e.message}};
+  async function checkAdmin(){let next=false;try{next=!!key()&&(await fetch(API+'/api/auth',{headers:headers()})).ok;}catch{}const changed=next!==admin;admin=next;$('#notifyPanel').hidden=!admin;$('#purchasePermissionsPanel').hidden=!admin;$('#buyOwnerField').hidden=!admin;if(changed){await load(true);window.dispatchEvent(new CustomEvent('xle-admin-change',{detail:{admin}}));}if(admin){try{const c=await req('/api/notifications/config');if(notifyEdits===notifySavedEdits){$('#notifyEnabled').checked=c.enabled;$('#notifyMode').value=c.mode;$('#notifyEvents').querySelectorAll('input').forEach(i=>i.checked=c.events.includes(i.value));}const p=await req('/api/purchases/permissions');$('#refundView').checked=p.refund_view;$('#refundEdit').checked=p.refund_edit;$('#refundEdit').disabled=!p.refund_view;}catch{}}}
+  let notifyStatusBusy=false;
+  async function loadNotifyStatus(){
+    if(!admin || notifyStatusBusy || document.hidden || !$('#adminsettings').classList.contains('on') || !$('#notifyPanel').open)return;
+    notifyStatusBusy=true;
+    try{
+      const r=await fetch(API+'/api/progress/notification-status',{headers:headers(),cache:'no-store',signal:AbortSignal.timeout(15000)});
+      if(!r.ok)throw Error('讀取失敗');
+      const n=await r.json();
+      const text=`進度回報通知｜Discord：${n.configured?'已設定':'尚未設定'} · 待送 ${n.pending} · 重試中 ${n.failed}${n.enabled?'':' · 通知總開關已關閉'}${n.recent_error?' · 最近失敗：'+n.recent_error:''}`;
+      if($('#progressNotifyStatus').textContent!==text)$('#progressNotifyStatus').textContent=text;
+    }catch{
+      const text='進度回報通知狀態暫時無法讀取，稍後會自動重試。';
+      if($('#progressNotifyStatus').textContent!==text)$('#progressNotifyStatus').textContent=text;
+    }finally{notifyStatusBusy=false;}
+  }
+  $('#notifyPanel').addEventListener('toggle',loadNotifyStatus);
+  document.querySelector('[data-view="adminsettings"]').addEventListener('click',loadNotifyStatus);
+  document.addEventListener('visibilitychange',loadNotifyStatus);
+  setInterval(loadNotifyStatus,5000);
   load(true).then(checkAdmin);
   setInterval(()=>{if(!document.hidden)load();},3000);
   setInterval(()=>{if(!document.hidden)checkAdmin();},30000);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden){load();checkAdmin();}});
   $('#buyItems').addEventListener('focusout',()=>setTimeout(()=>{if(deferredRender&&!editingPurchase())load(true);},0));
 })();
+
