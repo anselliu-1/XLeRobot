@@ -5,8 +5,9 @@
   const fileSize = n => n<1024 ? n+' bytes' : n<1024*1024 ? (n/1024).toFixed(1)+' KB' : (n/1024/1024).toFixed(2)+' MB';
   const syncMessage = (text,state='') => {const el=$('#prSync');if(el.textContent!==text)el.textContent=text;el.dataset.state=state;};
   let items = [], matched = new Set(), admin = false, showReportIds = false, request = 0, timer;
-  let pendingLoads = 0, lastSnapshot = '';
-  const draftFields = () => JSON.stringify(['reporter','subject','content','parent_id'].map(k=>form.elements[k].value));
+  let pendingLoads = 0, lastSnapshot = '', taskFilter = '';
+  let taskOptions = [];
+  const draftFields = () => JSON.stringify(['reporter','subject','content','parent_id','task_id'].map(k=>form.elements[k].value));
   let submittedFields = draftFields();
   const hasDraft = () => draftFields()!==submittedFields || form.elements.files.files.length>0;
   const mayLeave = () => !hasDraft() || confirm('有尚未送出的回報。確定離開或放棄目前輸入？本網站不會保存草稿。');
@@ -25,26 +26,40 @@
     return data;
   }
   const showId = () => admin || showReportIds;
+  async function loadTasks(){
+    try {
+      const d=await api('/api/tasks/options');
+      taskOptions=d.items||[];
+      const sel=$('#prTask'),flt=$('#prTaskFilter');
+      const old=sel.value,oldFilter=flt.value;
+      const options='<option value="">不關聯工作項目</option>'+taskOptions.map(t=>'<option value="'+esc(t.id)+'">'+esc(t.name)+'</option>').join('');
+      sel.innerHTML=options; sel.value=old;
+      flt.innerHTML='<option value="">全部工作</option><option value="__none">未關聯工作</option>'+taskOptions.map(t=>'<option value="'+esc(t.id)+'">'+esc(t.name)+'</option>').join('');
+      flt.value=oldFilter||taskFilter;
+    } catch(e){console.warn('工作項目載入失敗',e);}
+  }
   function card(r) {
     return `<article class="blk pr-report ${r.status==='void'?'pr-void':''}" id="report-${r.id}">
       <header><h3>${esc(r.subject)} · 第 ${r.version} 次回報</h3><span class="tag">${r.status==='valid'?'有效':'已作廢'}</span></header>
       <p class="muted">${esc(r.reporter)} · ${esc(date(r.created))}${r.parent_id?' · 接續第 '+(r.version-1)+' 次回報':''}${showId()?' · 回報編號 #'+r.id+(r.parent_id?'（接續 #'+r.parent_id+'）':''):''}</p>
+      <p class="muted">關聯工作：${esc(r.task_display||'未關聯')}</p>
       <div class="pr-content">${esc(r.content) || '（無文字內容）'}</div>
       ${r.status==='void'?`<p class="pr-reason">作廢原因：${esc(r.void_reason)}<br>${esc(date(r.void_at))}</p>`:''}
       <ul class="pr-files">${r.files.map(f=>`<li>${f.removed_at?`<span>${esc(f.name)}（已移除：${esc(f.reason)}）</span>`:`<a href="${f.url}">${esc(f.name)}</a> · ${fileSize(f.size)}${admin?` <button class="btn ghost" data-remove="${f.id}" data-report="${r.id}">移除附件</button>`:''}`}</li>`).join('')}</ul>
       <div class="pr-actions">${r.status==='valid'?`<button class="btn ghost" data-continue="${r.id}">接續此回報</button>`:''}
+      ${admin?`<button class="btn ghost" data-relink="${r.id}">修正工作關聯</button>`:""}
       ${admin?`${r.status==='valid'?`<button class="btn ghost" data-void="${r.id}">作廢（填原因）</button>`:`<button class="btn ghost" data-restore="${r.id}">恢復有效（填原因）</button>`}<button class="btn ghost" data-audit="${r.id}">操作紀錄</button>`:''}</div>
       <div class="pr-audit" data-audit-list="${r.id}"></div></article>`;
   }
   function render() {
     const closed = new Set([...$('#prItems').querySelectorAll('.pr-topic:not([open])')].map(el=>el.dataset.root));
     const asc=$('#prSort').value==='asc', sorter=(a,b)=>(asc?1:-1)*(a.id-b.id);
-    const shown=items.filter(r=>matched.has(r.id));
+    const shown=items.filter(r=>matched.has(r.id) && (!taskFilter || (taskFilter==="__none"?!r.task_id:r.task_id===taskFilter)));
     $('#prCount').textContent=`符合 ${shown.length} 筆回報；主題檢視會保留完整版本歷程。`;
     if($('#prView').value==='time') $('#prItems').innerHTML=shown.sort(sorter).map(card).join('');
     else {
       const groups=new Map();
-      items.forEach(r=>{if(!groups.has(r.root_id))groups.set(r.root_id,[]);groups.get(r.root_id).push(r);});
+      items.filter(r=>!taskFilter || (taskFilter==="__none"?!r.task_id:r.task_id===taskFilter)).forEach(r=>{if(!groups.has(r.root_id))groups.set(r.root_id,[]);groups.get(r.root_id).push(r);});
       $('#prItems').innerHTML=[...groups.values()].sort((a,b)=>sorter(a.at(-1),b.at(-1))).map(g=>{
         const latest=g.at(-1);
         return `<details class="pr-topic" data-root="${latest.root_id}" ${closed.has(String(latest.root_id))?'':'open'}><summary>${esc(latest.subject)} <span class="muted">· 共 ${g.length} 次回報 · 最近 ${esc(date(latest.created))}</span></summary>${g.sort(sorter).map(card).join('')}</details>`;
@@ -55,7 +70,7 @@
   async function load(background=false) {
     if(background===true && pendingLoads)return;
     pendingLoads++;
-    if(visible())syncMessage('同步中…','syncing');
+    if(!background && !lastSnapshot && visible())syncMessage('連線中…','syncing');
     const seq=++request;
     try {
       const query=new URLSearchParams({q:$('#prSearch').value,reporter:$('#prReporter').value,status:$('#prStatus').value});
@@ -68,13 +83,14 @@
         $('#prReporter').innerHTML='<option value="">全部姓名</option>'+d.reporters.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');
         $('#prReporter').value=selected; render();lastSnapshot=snapshot;
       }
-      syncMessage('● 已連線 · 每 5 秒自動同步（不影響草稿及附件）','connected');
+      const clock=new Date().toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+      syncMessage('已連線・全組即時同步（最後同步 '+clock+'）','connected');
     } catch(e) {
-      if(seq===request)syncMessage('● 連線異常 · 將自動重試：'+e.message,'error');
+      if(seq===request)syncMessage('連線中斷，正在重試…','error');
     } finally {pendingLoads--;}
   }
   function cancel() {
-    form.elements.parent_id.value=''; form.elements.subject.readOnly=false;
+    form.elements.parent_id.value=''; form.elements.subject.readOnly=false;form.elements.task_id.disabled=false;
     $('#prFormTitle').textContent='新增回報'; $('#prParentHint').textContent=''; $('#prCancel').hidden=true;
   }
   $('#prCancel').onclick=()=>{
@@ -91,7 +107,8 @@
     const files=[...form.elements.files.files];
     if(files.length>20 || files.reduce((n,f)=>n+f.size,0)>50*1024*1024){$('#prMessage').textContent='每筆最多 20 個附件，合計上限 50MB';return;}
     if(!form.elements.content.value.trim()){ $('#prMessage').textContent='請填寫回報內容';form.elements.content.focus();return; }
-    if(!confirm('確認送出？送出後不可修改，可接續建立新回報。'))return;
+    const linked=taskOptions.find(t=>t.id===form.elements.task_id.value);
+    if(!confirm('確認送出？'+(linked?'\\n關聯工作：'+linked.name:'\\n未關聯工作')+'\\n送出後不可修改，可接續建立新回報。'))return;
     const body=new FormData(form); button.disabled=true; $('#prMessage').textContent='上傳並儲存中，請勿重複送出…';
     try {
       const d=await api('/api/progress',{method:'POST',body});
@@ -108,6 +125,7 @@
       if(!r || r.status!=='valid')return;
       if(!mayLeave())return;
       form.elements.parent_id.value=r.id; form.elements.subject.value=r.subject;form.elements.subject.readOnly=true;
+      form.elements.task_id.value=r.task_id||'';form.elements.task_id.disabled=true;
       form.elements.content.value='';form.elements.files.value='';$('#prUploadSize').textContent='';
       submittedFields=draftFields();
       $('#prFormTitle').textContent='接續第 '+r.version+' 次回報';$('#prParentHint').textContent='同一主題下新增回報，保留接續來源；舊附件不會帶入。';
@@ -115,7 +133,16 @@
     }
     b.disabled=true;
     try {
-      if(b.dataset.audit){
+      if(b.dataset.relink){
+        const r=items.find(x=>x.id===Number(b.dataset.relink));
+        const chosen=prompt('請輸入新的工作 ID（留空表示取消關聯）：\\n'+taskOptions.map(t=>t.id+'：'+t.name).join('\\n'),r?.task_id||'');
+        if(chosen===null)return;
+        if(chosen && !taskOptions.some(t=>t.id===chosen)){alert('工作 ID 不存在');return;}
+        const reason=prompt('請填寫修正關聯原因（必填）');
+        if(!reason?.trim())return;
+        await api('/api/progress/'+b.dataset.relink+'/relink',{method:'POST',headers:{...headers(),'Content-Type':'application/json'},body:JSON.stringify({task_id:chosen,reason})});
+        await load();
+      } else if(b.dataset.audit){
         const d=await api('/api/progress/'+b.dataset.audit+'/audit',{headers:headers()});
         document.querySelector(`[data-audit-list="${b.dataset.audit}"]`).innerHTML=d.items.map(a=>`<p>${esc(date(a.created))} · ${esc(a.action)} · ${esc(a.actor)} ${esc(a.reason)}</p>`).join('');
       } else if(b.dataset.void || b.dataset.remove || b.dataset.restore){
@@ -130,9 +157,16 @@
   };
   $('#prSearch').oninput=()=>{clearTimeout(timer);timer=setTimeout(load,250);};
   ['prReporter','prStatus'].forEach(id=>$('#'+id).onchange=load);
+  $('#prTaskFilter').onchange=()=>{taskFilter=$('#prTaskFilter').value;render();};
   ['prSort','prView'].forEach(id=>$('#'+id).onchange=render);
   $('#prRefresh').onclick=load;
-  $('[data-view="progress"]').addEventListener('click',load);
+  $('[data-view="progress"]').addEventListener('click',()=>{loadTasks();load();});
+  window.addEventListener('xle-progress-task',e=>{
+    taskFilter=e.detail.openForm?'':e.detail.taskId;
+    $('#prTaskFilter').value=taskFilter;
+    if(e.detail.openForm){if(mayLeave()){cancel();form.elements.task_id.value=e.detail.taskId;form.scrollIntoView({behavior:'smooth'});}}
+    else render();
+  });
   const settingsToggle=$('#progressShowIds'),settingsMsg=$('#progressShowIdsMsg');
   if(settingsToggle)settingsToggle.onchange=async()=>{
     settingsToggle.disabled=true;settingsMsg.textContent='儲存中…';
@@ -148,5 +182,6 @@
   setInterval(()=>{if(visible())load(true);},5000);
   document.addEventListener('visibilitychange',()=>{if(visible())load(true);});
   window.addEventListener('online',()=>{if(visible())load(true);});
+  loadTasks();
   if(location.hash==='#progress') $('[data-view="progress"]').click();
 })();
