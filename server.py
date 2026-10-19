@@ -69,7 +69,7 @@ def is_admin(h):
     k = h.headers.get("X-Admin-Key", "")
     return bool(ADMIN_HASH and k) and hmac.compare_digest(hashlib.sha256(k.encode()).hexdigest(), ADMIN_HASH)
 OWNER_FIELDS = ("done", "done_date")          # 組長複檢：只有管理者可見可改
-PUBLIC_FIELDS = ("result", "member_done")       # 所有人可改：成果、組員回報完成
+PUBLIC_FIELDS = ()  # 舊成果改為唯讀
 FIELDS = ("task", "who", "due", "done_date", "pri", "note", "done", "result", "member_done", "member_done_at")
 
 SEED = [
@@ -102,6 +102,10 @@ def init():
             id TEXT PRIMARY KEY, n INTEGER, task TEXT NOT NULL, who TEXT DEFAULT '', due TEXT DEFAULT '',
             done_date TEXT DEFAULT '', pri TEXT DEFAULT '中', note TEXT DEFAULT '', done INTEGER DEFAULT 0, updated REAL)""")
         c.execute("CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT)")
+        c.execute("""CREATE TABLE IF NOT EXISTS task_status_audit(
+          id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL, task_name TEXT NOT NULL,
+          before_done INTEGER NOT NULL, after_done INTEGER NOT NULL, actor TEXT NOT NULL,
+          changed_at TEXT NOT NULL)""")
         c.execute("""CREATE TABLE IF NOT EXISTS attachments(
             id TEXT PRIMARY KEY, task_id TEXT NOT NULL, original_name TEXT NOT NULL, stored_name TEXT NOT NULL,
             mime TEXT DEFAULT 'application/octet-stream', size INTEGER DEFAULT 0, created TEXT DEFAULT '',
@@ -174,6 +178,10 @@ def bump(c):
 def rev(c):
     return int(c.execute("SELECT v FROM meta WHERE k='rev'").fetchone()[0])
 
+def member_completion_allowed(c):
+    r=c.execute("SELECT v FROM meta WHERE k='member_completion_allowed'").fetchone()
+    return bool(r and r['v']=='1')
+
 def rows(c, admin=True):
     amap = {}
     for a in c.execute("SELECT id,task_id,original_name,mime,size,created FROM attachments ORDER BY created"):
@@ -184,8 +192,10 @@ def rows(c, admin=True):
         d = dict(r); d["done"] = bool(d["done"]); d["member_done"] = bool(d.get("member_done"))
         for k in ("result", "member_done_at"): d[k] = d.get(k) or ""
         d["attachments"] = amap.get(d["id"], [])
-        if not admin:
-            d.pop("done", None); d.pop("done_date", None)
+        d["report_count"] = c.execute("SELECT COUNT(*) FROM progress_reports WHERE task_id=?",(d["id"],)).fetchone()[0]
+        latest=c.execute("SELECT created,subject,content FROM progress_reports WHERE task_id=? ORDER BY id DESC LIMIT 1",(d["id"],)).fetchone()
+        d["latest_report"] = dict(latest) if latest else None
+        d["member_completion_allowed"] = member_completion_allowed(c)
         out.append(d)
     return out
 
@@ -457,6 +467,16 @@ class H(BaseHTTPRequestHandler):
                 return self._send(200,{'files':result})
         if p == '/api/purchases':
             with LOCK, conn() as c: return self._send(200, {'purchases':purchase_rows(c,is_admin(self)),'permissions':purchase_permissions(c) if is_admin(self) else {'refund_view':purchase_permissions(c)['refund_view'],'refund_edit':purchase_permissions(c)['refund_edit']}})
+        if p == '/api/tasks/completion-settings':
+            if self._deny(): return
+            try:
+                d=self._body()
+                if type(d.get('allow_members')) is not bool: raise ValueError()
+            except Exception: return self._send(400,{'error':'設定格式錯誤'})
+            with LOCK,conn() as c:
+                c.execute("INSERT OR REPLACE INTO meta(k,v) VALUES('member_completion_allowed',?)",('1' if d['allow_members'] else '0',))
+                bump(c)
+            return self._send(200,{'allow_members':d['allow_members']})
         if p == '/api/purchases/permissions':
             if self._deny(): return
             with LOCK, conn() as c: return self._send(200,purchase_permissions(c))
@@ -488,6 +508,13 @@ class H(BaseHTTPRequestHandler):
             except Exception: return self._send(502,{'error':'storage unavailable'})
             self.send_response(200); self.send_header('Content-Type',a['mime']); self.send_header('Content-Length',str(len(b)))
             self.send_header('X-Content-Type-Options','nosniff'); self.end_headers(); self.wfile.write(b); return
+        if p == "/api/tasks/options":
+            with LOCK, conn() as c:
+                return self._send(200, {"items":[{"id":r["id"],"name":r["task"]} for r in c.execute("SELECT id,task FROM tasks ORDER BY n")]})
+        if p == "/api/tasks/status-audit":
+            if self._deny(): return
+            with LOCK, conn() as c:
+                return self._send(200,{"items":[dict(r) for r in c.execute("SELECT * FROM task_status_audit ORDER BY id DESC LIMIT 300")]})
         if p == "/api/tasks":
             q = self.path.split("?", 1)[1] if "?" in self.path else ""
             since = dict(x.split("=", 1) for x in q.split("&") if "=" in x).get("since")
@@ -678,6 +705,8 @@ class H(BaseHTTPRequestHandler):
                 return self._send(200,{'purchases':purchase_rows(c,is_admin(self))})
         m = re.match(r"^/api/tasks/([\w-]+)/attachments$", p)
         if m:
+            return self._send(403, {"error":"請改至進度回報上傳新成果附件"})
+        if False:
             n = int(self.headers.get("Content-Length") or 0)
             if n <= 0 or n > MAX_UPLOAD: return self._send(413, {"error": "file too large (max 50 MB)"})
             name = self.headers.get("X-File-Name", "upload.bin")
@@ -793,18 +822,25 @@ class H(BaseHTTPRequestHandler):
         admin = is_admin(self)
         o = clean(d, partial=True)
         if not admin:
-            if any(k not in PUBLIC_FIELDS for k in o):
-                return self._send(403, {"error": "owner only"})
+            if any(k != "done" for k in o):
+                return self._send(403, {"error": "一般組員僅可依管理員設定操作完成狀態"})
         if not o: return self._send(400, {"error": "no fields"})
         with LOCK, conn() as c:
             cur = c.execute("SELECT * FROM tasks WHERE id=?", (m.group(1),)).fetchone()
             if not cur: return self._send(404, {"error": "gone"})
+            if not admin and not member_completion_allowed(c):
+                return self._send(403,{"error":"目前僅管理員可以勾選完成"})
+            if "result" in o or "member_done" in o or "member_done_at" in o:
+                return self._send(403,{"error":"舊成果及回報完成欄位已停止編輯"})
             if o.get("done") == 1 and not cur["done"] and not o.get("done_date"): o["done_date"] = now_s()
             if o.get("done") == 0 and "done_date" not in o: o["done_date"] = ""
             if o.get("member_done") == 1 and not cur["member_done"] and not o.get("member_done_at"): o["member_done_at"] = now_s()
             if o.get("member_done") == 0 and "member_done_at" not in o: o["member_done_at"] = ""
             sets = ",".join(f"{k}=?" for k in o) + ",updated=?"
             c.execute(f"UPDATE tasks SET {sets} WHERE id=?", (*o.values(), time.time(), m.group(1)))
+            if "done" in o and bool(o["done"]) != bool(cur["done"]):
+                c.execute("INSERT INTO task_status_audit(task_id,task_name,before_done,after_done,actor,changed_at) VALUES(?,?,?,?,?,?)",
+                          (m.group(1),cur["task"],int(bool(cur["done"])),int(bool(o["done"])),"管理員" if admin else "一般組員（未驗證身分）",now_s()))
             current = dict(cur)
             current.update(o)
             summary = notify_fields(current, TASK_NOTIFY_FIELDS)
