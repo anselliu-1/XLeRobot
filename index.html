@@ -67,7 +67,7 @@
       <label>檢視<select id="prView"><option value="topic">依主題／完整版本歷程</option><option value="time">依時間</option></select></label>
       <button type="button" class="btn ghost" id="prRefresh">重新整理</button>
     </div>
-    <p id="prSync" class="muted">此分頁開啟時，每 5 秒自動同步。</p><p id="prCount" role="status"></p><p id="prNotify" class="muted"></p><div id="prItems"></div>
+    <p id="prSync" class="muted">此分頁開啟時，每 5 秒自動同步。</p><p id="prCount" role="status"></p><div id="prItems"></div>
   </section>
   <!-- 總覽：新方向優先，舊版內容收合 -->
   <section class="view on" id="overview">
@@ -139,7 +139,7 @@
     <label><input type="checkbox" id="refundView"> 允許組員查看報銷狀態</label><p><label><input type="checkbox" id="refundEdit"> 允許組員修改報銷狀態（需先允許查看）</label></p>
     <button class="btn" id="purchasePermSave">儲存權限設定</button><p class="muted" id="purchasePermMsg"></p></div></details>
     <details class="legacy" id="notifyPanel" hidden><summary>管理員｜Discord 通知設定</summary>
-    <div class="legacy-body"><p class="muted">通知透過 Railway 設定的 DISCORD_WEBHOOK_URL 傳送到 Discord 頻道。</p>
+    <div class="legacy-body"><p class="muted">通知透過 Railway 設定的 DISCORD_WEBHOOK_URL 傳送到 Discord 頻道。</p><p id="progressNotifyStatus" class="muted">進度回報通知狀態：載入中…</p>
     <label><input type="checkbox" id="notifyEnabled"> 啟用 Discord 通知</label>
     <p><label>寄送方式 <select id="notifyMode"><option value="instant">即時通知</option><option value="digest">10 分鐘合併通知</option></select></label></p>
     <div id="notifyEvents" class="buy-notify-grid"></div><button class="btn" id="notifySave">儲存通知設定</button><p id="notifyMsg" class="muted"></p></div></details>
@@ -430,10 +430,10 @@
 <script src="data.js?v=20261007a"></script>
 <script src="app.js?v=20261007a"></script>
 <script src="tasks.js?v=20261007a"></script>
-<script src="purchases.js?v=20261012c"></script>
+<script src="purchases.js?v=20261019d"></script>
 <script src="admin-pages.js?v=20261012a"></script>
 <script src="risks-admin.js?v=20261012a"></script>
-<script src="progress.js?v=20261019c"></script>
+<script src="progress.js?v=20261019d"></script>
 <script>
 async function loadSiteInfo() {
   try {

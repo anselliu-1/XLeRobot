@@ -3,6 +3,7 @@
   const esc = s => String(s ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const headers = () => ({'X-Admin-Key':localStorage.getItem('xle-admin') || ''});
   const fileSize = n => n<1024 ? n+' bytes' : n<1024*1024 ? (n/1024).toFixed(1)+' KB' : (n/1024/1024).toFixed(2)+' MB';
+  const syncMessage = text => {if($('#prSync').textContent!==text)$('#prSync').textContent=text;};
   let items = [], matched = new Set(), admin = false, request = 0, timer;
   let pendingLoads = 0, lastSnapshot = '';
   const date = s => new Intl.DateTimeFormat('zh-TW',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date(s))+'（台灣）';
@@ -55,12 +56,9 @@
         $('#prReporter').innerHTML='<option value="">全部姓名</option>'+d.reporters.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');
         $('#prReporter').value=selected; render();lastSnapshot=snapshot;
       }
-      $('#prSync').textContent='自動同步中：每 5 秒更新，保留正在填寫的內容與附件。';
-      $('#prNotify').textContent='';
-      if(admin){const n=await api('/api/progress/notification-status',{headers:headers()});
-        $('#prNotify').textContent=`Discord：${n.configured?'已設定':'尚未設定'} · 待送 ${n.pending} · 重試中 ${n.failed}`;}
+      syncMessage('自動同步中：每 5 秒更新，保留正在填寫的內容與附件。');
     } catch(e) {
-      if(seq===request)$('#prSync').textContent='同步暫時失敗，稍後會自動重試：'+e.message;
+      if(seq===request)syncMessage('同步暫時失敗，稍後會自動重試：'+e.message);
     } finally {pendingLoads--;}
   }
   function cancel() {

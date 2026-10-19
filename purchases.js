@@ -62,6 +62,25 @@
   $('#purchasePermSave').onclick=async()=>{try{perms=await req('/api/purchases/permissions','POST',{refund_view:$('#refundView').checked,refund_edit:$('#refundEdit').checked});$('#purchasePermMsg').textContent='權限已儲存';await load();}catch(e){$('#purchasePermMsg').textContent='儲存失敗：'+e.message}};
   $('#notifySave').onclick=async()=>{try{await req('/api/notifications/config','POST',{enabled:$('#notifyEnabled').checked,mode:$('#notifyMode').value,events:[...$('#notifyEvents').querySelectorAll('input:checked')].map(i=>i.value)});$('#notifyMsg').textContent='設定已儲存';}catch(e){$('#notifyMsg').textContent='儲存失敗：'+e.message}};
   async function checkAdmin(){let next=false;try{next=!!key()&&(await fetch(API+'/api/auth',{headers:headers()})).ok;}catch{}const changed=next!==admin;admin=next;$('#notifyPanel').hidden=!admin;$('#purchasePermissionsPanel').hidden=!admin;$('#buyOwnerField').hidden=!admin;if(changed){await load(true);window.dispatchEvent(new CustomEvent('xle-admin-change',{detail:{admin}}));}if(admin){try{const c=await req('/api/notifications/config');$('#notifyEnabled').checked=c.enabled;$('#notifyMode').value=c.mode;$('#notifyEvents').querySelectorAll('input').forEach(i=>i.checked=c.events.includes(i.value));const p=await req('/api/purchases/permissions');$('#refundView').checked=p.refund_view;$('#refundEdit').checked=p.refund_edit;$('#refundEdit').disabled=!p.refund_view;}catch{}}}
+  let notifyStatusBusy=false;
+  async function loadNotifyStatus(){
+    if(!admin || notifyStatusBusy || document.hidden || !$('#adminsettings').classList.contains('on') || !$('#notifyPanel').open)return;
+    notifyStatusBusy=true;
+    try{
+      const r=await fetch(API+'/api/progress/notification-status',{headers:headers(),cache:'no-store',signal:AbortSignal.timeout(15000)});
+      if(!r.ok)throw Error('讀取失敗');
+      const n=await r.json();
+      const text=`進度回報通知｜Discord：${n.configured?'已設定':'尚未設定'} · 待送 ${n.pending} · 重試中 ${n.failed}`;
+      if($('#progressNotifyStatus').textContent!==text)$('#progressNotifyStatus').textContent=text;
+    }catch{
+      const text='進度回報通知狀態暫時無法讀取，稍後會自動重試。';
+      if($('#progressNotifyStatus').textContent!==text)$('#progressNotifyStatus').textContent=text;
+    }finally{notifyStatusBusy=false;}
+  }
+  $('#notifyPanel').addEventListener('toggle',loadNotifyStatus);
+  document.querySelector('[data-view="adminsettings"]').addEventListener('click',loadNotifyStatus);
+  document.addEventListener('visibilitychange',loadNotifyStatus);
+  setInterval(loadNotifyStatus,5000);
   load(true).then(checkAdmin);
   setInterval(()=>{if(!document.hidden)load();},3000);
   setInterval(()=>{if(!document.hidden)checkAdmin();},30000);
