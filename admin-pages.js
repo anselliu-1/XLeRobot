@@ -5,6 +5,7 @@
   let admin=false, files=[], backupStatusBusy=false;
   const selectedFileIds=new Set(), openFileGroups=new Set();
   const fileGroups=[['task','分工＆時程','原有工作附件及歷史資料'],['progress','進度回報','各筆進度回報的附件'],['image','商品圖片','商品圖片及相關檔案'],['receipt','報銷憑證','報銷相關附件']];
+  const formatOverviewDate=s=>{if(!s)return '';const raw=String(s);if(/^\\d{4}-\\d{2}-\\d{2}T?\\d{2}:\\d{2}/.test(raw)&&!/[zZ]|[+-]\\d{2}:?\\d{2}$/.test(raw))return raw.slice(0,16).replace('T',' ').replace(/-/g,'/');const d=new Date(raw);return Number.isNaN(d.getTime())?raw.replace('T',' ').replace(/-/g,'/'):new Intl.DateTimeFormat('zh-TW',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).format(d);};
   const formatFileDate=s=>{if(!s)return '時間未提供';const d=new Date(s);return Number.isNaN(d.getTime())?String(s):new Intl.DateTimeFormat('zh-TW',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(d);};
   const shownFiles=()=>{const q=$('#fileSearch').value.trim().toLowerCase(),type=$('#fileType').value;return files.filter(f=>(type==='all'||f.kind===type)&&(String(f.original_name||'')+' '+String(f.parent_name||'')).toLowerCase().includes(q));};
   function updateFileSelection(){const shown=shownFiles(),all=shown.length>0&&shown.every(f=>selectedFileIds.has(String(f.id))),some=shown.some(f=>selectedFileIds.has(String(f.id)));const cb=$('#fileSelectAll');cb.checked=all;cb.indeterminate=!all&&some;cb.disabled=!shown.length;$('#fileSelectedCount').textContent='已選取 '+selectedFileIds.size+' 個檔案';}
@@ -43,6 +44,8 @@
     root.innerHTML=fileGroups.map(([kind,title,description])=>{
       const group=shown.filter(f=>f.kind===kind);
       if(!group.length && ($('#fileSearch').value.trim()||$('#fileType').value!=='all'))return '';
+      const chosen=group.filter(f=>selectedFileIds.has(String(f.id))).length;
+      const selection=group.length?'<div class="file-group-select"><label><input type="checkbox" data-group-select="'+kind+'" '+(chosen===group.length?'checked':'')+'> 全選此分類</label><span class="muted">已選取 '+chosen+' / '+group.length+' 個</span></div>':'';
       const rows=group.map(f=>'<article class="hw file-entry"><header><h3>'+esc(f.original_name)+'</h3></header>'+
         '<div class="file-entry-body"><p class="muted">'+esc(title)+' · '+esc(f.parent_name)+' · '+Math.ceil((f.size||0)/1024)+' KB · '+esc(formatFileDate(f.created))+'</p>'+
         '<div class="file-entry-actions"><label><input type="checkbox" data-file-id="'+esc(f.id)+'" '+(selectedFileIds.has(String(f.id))?'checked':'')+'> 選取下載</label> <a class="btn ghost" href="'+esc(f.url)+'" target="_blank" rel="noopener">預覽／下載</a></div></div></article>').join('');
@@ -69,13 +72,28 @@
       stats.innerHTML=boxes.map(([k,v])=>'<article class="hw"><header><h3>'+esc(k)+'</h3></header><strong class="overview-number">'+v+'</strong></article>').join('');
       $('#overviewProgressBar').style.width=rate+'%';
       $('#overviewProgressLabel').textContent=done+' / '+count+' 項工作主題已完成（'+rate+'%）';
-      topics.innerHTML=tasks.length?tasks.map(t=>'<article class="hw"><header><h3>'+esc(t.task)+'</h3></header><p>'+(t.done?'已完成':'進行中')+' · '+(t.report_count||0)+' 筆進度回報</p>'+(t.latest_report?'<p class="muted">最近更新：'+esc(t.latest_report.created.slice(0,16))+'</p>':'<p class="muted">尚無關聯回報</p>')+'</article>').join(''):'<p class="muted">尚無工作主題。</p>';
+      const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+      const dueValue=t=>String(t.due||t.deadline||'').slice(0,10);
+      topics.innerHTML=tasks.length?tasks.map(t=>{
+        const due=dueValue(t),late=!t.done&&/^\\d{4}-\\d{2}-\\d{2}$/.test(due)&&due<today;
+        const status=t.done?'已完成':late?'已逾期':'進行中';
+        const css=t.done?'overview-done':late?'overview-late':'';
+        return '<article class="hw overview-topic '+css+'"><header><h3>'+esc(t.task)+'</h3></header><p>'+status+' · '+(t.report_count||0)+' 筆進度回報</p>'+(late?'<p class="muted">截止日期：'+esc(due.replace(/-/g,'/'))+'</p>':'')+(t.latest_report?'<p class="muted">最近更新：'+esc(formatOverviewDate(t.latest_report.created))+'</p>':'<p class="muted">尚無關聯回報</p>')+'</article>';
+      }).join(''):'<p class="muted">尚無工作主題。</p>';
     }catch(e){stats.textContent='進度載入失敗：'+e.message;topics.textContent='請稍後重新整理。';}
   }
   document.querySelectorAll('[data-view="overview"]').forEach(b=>b.addEventListener('click',loadOverview));
   loadOverview();
   $('#fileItems').addEventListener('toggle',e=>{const d=e.target.closest('details[data-file-group]');if(!d)return;if(d.open)openFileGroups.add(d.dataset.fileGroup);else openFileGroups.delete(d.dataset.fileGroup);},true);
-  $('#fileItems').addEventListener('change',e=>{const c=e.target.closest('input[data-file-id]');if(!c)return;if(c.checked)selectedFileIds.add(c.dataset.fileId);else selectedFileIds.delete(c.dataset.fileId);updateFileSelection();});
+  $('#fileItems').addEventListener('change',e=>{
+    const group=e.target.closest('input[data-group-select]');
+    if(group){for(const f of shownFiles().filter(f=>f.kind===group.dataset.groupSelect)){if(group.checked)selectedFileIds.add(String(f.id));else selectedFileIds.delete(String(f.id));}render();return;}
+    const c=e.target.closest('input[data-file-id]');if(!c)return;
+    if(c.checked)selectedFileIds.add(c.dataset.fileId);else selectedFileIds.delete(c.dataset.fileId);
+    const kind=files.find(f=>String(f.id)===c.dataset.fileId)?.kind;
+    if(kind){const visible=shownFiles().filter(f=>f.kind===kind),selected=visible.filter(f=>selectedFileIds.has(String(f.id))).length;const toggle=$('#fileItems input[data-group-select="'+kind+'"]');if(toggle){toggle.checked=visible.length>0&&selected===visible.length;toggle.indeterminate=selected>0&&selected<visible.length;const count=toggle.closest('.file-group-select')?.querySelector('.muted');if(count)count.textContent='已選取 '+selected+' / '+visible.length+' 個';}}
+    updateFileSelection();
+  });
   $('#fileSelectAll').addEventListener('change',e=>{for(const f of shownFiles()){if(e.target.checked)selectedFileIds.add(String(f.id));else selectedFileIds.delete(String(f.id));}render();});
   $('#fileSearch').addEventListener('input',render);
   $('#fileType').addEventListener('change',render);
