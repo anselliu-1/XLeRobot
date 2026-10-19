@@ -51,7 +51,7 @@ def export(h):
         if scope=='filtered' and (not isinstance(ids,list) or len(ids)>10000 or any(type(i)!=int for i in ids)):
             raise ValueError('篩選清單無效')
         with A.LOCK,A.conn() as c:
-            allrows=[dict(r) for r in c.execute('SELECT * FROM progress_reports ORDER BY root_id,version,id')]
+            allrows=[dict(r) for r in c.execute('SELECT * FROM progress_reports WHERE status!='trash' ORDER BY root_id,version,id')]
             if scope=='single':rows=[r for r in allrows if r['id']==rid]
             elif scope=='task':rows=[r for r in allrows if r['task_id']==task_id]
             elif scope=='filtered':rows=[r for r in allrows if r['id'] in set(ids)]
