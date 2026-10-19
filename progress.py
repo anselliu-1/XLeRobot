@@ -37,6 +37,11 @@ def init():
           action TEXT NOT NULL, actor TEXT NOT NULL, reason TEXT NOT NULL,
           file_id TEXT NOT NULL DEFAULT '', created TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS progress_deleted_audit(id INTEGER PRIMARY KEY AUTOINCREMENT,report_id INTEGER NOT NULL,subject TEXT NOT NULL,reporter TEXT NOT NULL,actor TEXT NOT NULL,reason TEXT NOT NULL,created TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS progress_cleanup(
+          id TEXT PRIMARY KEY, object_key TEXT NOT NULL, storage TEXT NOT NULL,
+          created TEXT NOT NULL, completed TEXT NOT NULL DEFAULT '',
+          attempts INTEGER NOT NULL DEFAULT 0, next_try REAL NOT NULL DEFAULT 0,
+          error TEXT NOT NULL DEFAULT '');
         CREATE TABLE IF NOT EXISTS progress_outbox(
           id TEXT PRIMARY KEY, detail TEXT NOT NULL, created TEXT NOT NULL,
           sent_at TEXT NOT NULL DEFAULT '', attempts INTEGER NOT NULL DEFAULT 0,
@@ -77,6 +82,7 @@ def event(c, rid, action, actor, reason='', fid=''):
 def worker():
     while True:
         try:
+            retry_cleanup()
             with A.LOCK, A.conn() as c:
                 removals=[dict(r) for r in c.execute("SELECT * FROM progress_files WHERE removed_at<>'' AND cleared_at='' LIMIT 5")]
             for f in removals:
@@ -164,8 +170,10 @@ def list_reports(h):
     with A.LOCK, A.conn() as c:
         is_admin=A.is_admin(h)
         reports=[dict(r) for r in c.execute("SELECT * FROM progress_reports WHERE status!='trash' ORDER BY id")]
+        versions={r['id']:r['version'] for r in c.execute('SELECT id,version FROM progress_reports')}
         trash_count=c.execute("SELECT COUNT(*) FROM progress_reports WHERE status='trash'").fetchone()[0] if is_admin else 0
         for r in reports:
+            r['parent_version']=versions.get(r['parent_id'])
             if r['task_id']:
                 current=c.execute('SELECT task FROM tasks WHERE id=?',(r['task_id'],)).fetchone()
                 r['task_display']=current['task'] if current else r['task_name']+'（原工作已移除）'
@@ -255,6 +263,32 @@ def clear_file(f):
     with A.LOCK,A.conn() as c:
         c.execute('UPDATE progress_files SET cleared_at=? WHERE id=?',(stamp(),f['id']))
 
+
+def retry_cleanup(ids=None):
+    # Store object identities before deleting report metadata, so a crash or S3
+    # outage never loses the durable deletion intention. DELETE is idempotent.
+    with A.LOCK,A.conn() as c:
+        if ids is None:
+            jobs=[dict(r) for r in c.execute("SELECT * FROM progress_cleanup WHERE completed='' AND next_try<=? ORDER BY created LIMIT 5",(time.time(),))]
+        else:
+            jobs=[]
+            for fid in ids:
+                row=c.execute("SELECT * FROM progress_cleanup WHERE id=? AND completed=''",(fid,)).fetchone()
+                if row:jobs.append(dict(row))
+    for job in jobs:
+        try:
+            try:
+                if job['storage']=='bucket':A.s3_request('DELETE',job['object_key'])
+                else:os.remove(os.path.join(A.UPLOAD_DIR,job['object_key']))
+            except FileNotFoundError:pass
+            with A.LOCK,A.conn() as c:
+                c.execute("UPDATE progress_cleanup SET completed=?,error='' WHERE id=?",(stamp(),job['id']))
+        except Exception as exc:
+            with A.LOCK,A.conn() as c:
+                c.execute('UPDATE progress_cleanup SET attempts=attempts+1,next_try=?,error=? WHERE id=?',
+                          (time.time()+min(300,5*2**min(job['attempts'],6)),type(exc).__name__,job['id']))
+            print('progress permanent cleanup retry:',type(exc).__name__,flush=True)
+
 def moderate(h,rid,action):
     if not A.is_admin(h): return h._send(403,{'error':'需要已驗證的管理員'})
     d=h._body()
@@ -319,22 +353,19 @@ def permanently_delete(h,rid):
         if c.execute('SELECT 1 FROM progress_reports WHERE parent_id=? LIMIT 1',(rid,)).fetchone():
             return h._send(409,{'error':'此回報仍有接續回報，請先從最新的接續回報開始處理'})
         files=[dict(f) for f in c.execute('SELECT * FROM progress_files WHERE report_id=?',(rid,))]
+        for f in files:
+            if not f['cleared_at']:
+                c.execute('INSERT OR IGNORE INTO progress_cleanup(id,object_key,storage,created) VALUES(?,?,?,?)',
+                          (f['id'],f['object_key'],f['storage'],stamp()))
         c.execute('INSERT INTO progress_deleted_audit(report_id,subject,reporter,actor,reason,created) VALUES(?,?,?,?,?,?)',
                   (rid,r['subject'],r['reporter'],'已驗證管理員',reason,stamp()))
         c.execute('DELETE FROM progress_audit WHERE report_id=?',(rid,))
         c.execute('DELETE FROM progress_files WHERE report_id=?',(rid,))
         c.execute('DELETE FROM progress_reports WHERE id=?',(rid,))
-    failures=[]
-    for f in files:
-        if f['cleared_at']:continue
-        try:
-            if f['storage']=='bucket':A.s3_request('DELETE',f['object_key'])
-            else:os.remove(os.path.join(A.UPLOAD_DIR,f['object_key']))
-        except FileNotFoundError:pass
-        except Exception as exc:
-            failures.append(f['object_key'])
-            print('progress permanent delete storage cleanup failed:',repr(exc),flush=True)
-    return h._send(200,{'ok':True,'warning':'資料庫已刪除，部分附件儲存清理失敗，需管理員追查' if failures else ''})
+    retry_cleanup([f['id'] for f in files if not f['cleared_at']])
+    with A.LOCK,A.conn() as c:
+        pending=any(c.execute("SELECT 1 FROM progress_cleanup WHERE id=? AND completed=''",(f['id'],)).fetchone() for f in files)
+    return h._send(200,{'ok':True,'warning':'回報已刪除，部分附件清理尚未完成，系統將自動重試' if pending else ''})
 
 def route(h,method):
     p=h._path()
@@ -400,3 +431,4 @@ def route(h,method):
         print('progress request failed:',type(exc).__name__,flush=True)
         h.close_connection=True; h._send(503,{'error':'儲存服務暫時無法使用，請重新整理確認後再試'})
     return True
+

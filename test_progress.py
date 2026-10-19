@@ -84,7 +84,7 @@ class ProgressTests(unittest.TestCase):
         self.assertEqual(self.req('/api/progress/'+str(rid),'DELETE',admin=True)[0],405)
         self.assertEqual(self.req(f'/api/progress/{rid}/void','POST',{'reason':'誤傳'})[0],403)
         self.assertEqual(self.req(f'/api/progress/{rid}/void','POST',{'reason':''},True)[0],400)
-        self.assertEqual(self.req(f'/api/progress/{rid}/remove-file','POST',{'reason':'清除','file_id':fid},True)[0],400)
+        self.assertEqual(self.req(f'/api/progress/{rid}/remove-file','POST',{'reason':'','file_id':fid},True)[0],400)
         self.assertEqual(self.req(f'/api/progress/{rid}/void','POST',{'reason':'誤傳'},True)[0],200)
         self.assertEqual(self.create({'reporter':'甲','subject':'a','parent_id':str(rid)})[0],400)
         self.assertEqual(self.req(f'/api/progress/{rid}/void','POST',{'reason':'重複'},True)[0],409)
@@ -167,7 +167,7 @@ class ProgressTests(unittest.TestCase):
         cfg['enabled']=True;cfg['events']=['progress_add']
         self.assertEqual(self.req('/api/notifications/config','POST',cfg,True)[0],200)
         second=self.create()[1]['id']
-        third=self.create({'reporter':'甲','subject':'a','parent_id':str(second)})[1]['id']
+        third=self.create({'reporter':'甲','subject':'a','content':'接續內容','parent_id':str(second)})[1]['id']
         with app.conn() as c:
             self.assertEqual(c.execute('SELECT event FROM progress_outbox WHERE detail LIKE ?',(f'%回報 #{second}・%',)).fetchone()[0],'progress_add')
             self.assertFalse(c.execute('SELECT 1 FROM progress_outbox WHERE detail LIKE ?',(f'%回報 #{third}・%',)).fetchone())
@@ -201,7 +201,7 @@ class ProgressTests(unittest.TestCase):
             self.assertEqual(actions,['新增回報','作廢回報','附件移除','恢復有效'])
             self.assertEqual(c.execute('SELECT event FROM progress_outbox WHERE detail LIKE ? ORDER BY created DESC LIMIT 1',(f'%回報 #{rid}・%',)).fetchone()[0],'progress_restore')
         self.assertEqual(self.req('/api/progress-files/'+fid)[0],404)
-        self.assertEqual(self.create({'reporter':'甲','subject':'a','parent_id':str(rid)})[0],201)
+        self.assertEqual(self.create({'reporter':'甲','subject':'a','content':'接續內容','parent_id':str(rid)})[0],201)
 
     def test_backup_all_data_and_files(self):
         import io,zipfile,uuid
@@ -265,3 +265,4 @@ class ProgressTests(unittest.TestCase):
             with app.conn() as c:c.execute("DELETE FROM admin_backup_audit WHERE id IN ('status-success','status-failed')")
 
 if __name__=='__main__': unittest.main()
+

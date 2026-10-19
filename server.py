@@ -192,8 +192,8 @@ def rows(c, admin=True):
         d = dict(r); d["done"] = bool(d["done"]); d["member_done"] = bool(d.get("member_done"))
         for k in ("result", "member_done_at"): d[k] = d.get(k) or ""
         d["attachments"] = amap.get(d["id"], [])
-        d["report_count"] = c.execute("SELECT COUNT(*) FROM progress_reports WHERE task_id=?",(d["id"],)).fetchone()[0]
-        latest=c.execute("SELECT created,subject,content FROM progress_reports WHERE task_id=? ORDER BY id DESC LIMIT 1",(d["id"],)).fetchone()
+        d["report_count"] = c.execute("SELECT COUNT(*) FROM progress_reports WHERE task_id=? AND status!='trash'",(d["id"],)).fetchone()[0]
+        latest=c.execute("SELECT created,subject,content FROM progress_reports WHERE task_id=? AND status!='trash' ORDER BY id DESC LIMIT 1",(d["id"],)).fetchone()
         d["latest_report"] = dict(latest) if latest else None
         d["member_completion_allowed"] = member_completion_allowed(c)
         out.append(d)
@@ -266,9 +266,18 @@ def queue_notify(c, event, subject, detail):
                   (uuid.uuid4().hex, event, subject[:200], detail[:1500], time.time()))
 
 
+def pending_notifications(c, cfg, now):
+    # The persistent queue survives deploys; only currently enabled events are sent.
+    enabled=[e for e in cfg.get('events',[]) if e in NOTIFY_EVENTS and not e.startswith('progress_')]
+    if not cfg.get('enabled') or not enabled:return []
+    wait=600 if cfg.get('mode')=='digest' else 0
+    slots=','.join('?' for _ in enabled)
+    return [dict(r) for r in c.execute(
+        f'SELECT * FROM notify_queue WHERE sent=0 AND created<=? AND event IN ({slots}) ORDER BY created LIMIT 5',
+        (now-wait,*enabled))]
+
+
 def mail_worker():
-    # 啟動時間以前的舊通知不自動補發
-    started_at = time.time()
 
     while True:
         try:
@@ -280,24 +289,7 @@ def mail_worker():
                 cfg = notify_config(c)
 
                 if cfg.get("enabled") and webhook:
-                    wait = (
-                        600 if cfg.get("mode") == "digest"
-                        else 0
-                    )
-
-                    items = c.execute(
-                        """
-                        SELECT * FROM notify_queue
-                        WHERE sent = 0
-                          AND created > ?
-                          AND created <= ?
-                        ORDER BY created
-                        LIMIT 5
-                        """,
-                        (started_at, time.time() - wait)
-                    ).fetchall()
-
-                    items = [dict(x) for x in items]
+                    items = pending_notifications(c, cfg, time.time())
                 else:
                     items = []
 
@@ -325,7 +317,7 @@ def mail_worker():
                 )
 
                 payload = json.dumps(
-                    {"content": message},
+                    {"content": message, "allowed_mentions": {"parse": []}},
                     ensure_ascii=False
                 ).encode("utf-8")
 
@@ -562,7 +554,7 @@ class H(BaseHTTPRequestHandler):
             rel = "/index.html"
         rel = os.path.normpath(rel.lstrip("/"))
         target = os.path.abspath(os.path.join(root, rel))
-        if rel in {"index.html", "style.css", "app.js", "data.js", "tasks.js", "purchases.js", "admin-pages.js", "risks-admin.js", "progress.js", "progress.css", "modal.js", "arm-battery-wiring.png", "team-wiring.png", "wiring-1-lipo.png", "wiring-2-shared-u2d2.png", "wiring-3-powerbank-only.png", "README_v1.3.0.md"} and target.startswith(root + os.sep) and os.path.isfile(target):
+        if rel in {"index.html", "style.css", "app.js", "data.js", "tasks.js", "purchases.js", "admin-pages.js", "admin-files.js", "risks-admin.js", "progress.js", "progress.css", "modal.js", "arm-battery-wiring.png", "team-wiring.png", "wiring-1-lipo.png", "wiring-2-shared-u2d2.png", "wiring-3-powerbank-only.png", "README_v1.3.0.md"} and target.startswith(root + os.sep) and os.path.isfile(target):
             try:
                 with open(target, "rb") as f:
                     b = f.read()
@@ -958,3 +950,4 @@ if __name__ == "__main__":
     print(f"listening on {PORT}, db={DB}, attachment_storage={'bucket' if S3_ENABLED else 'local'}", flush=True)
     threading.Thread(target=mail_worker, daemon=True).start()
     ThreadingHTTPServer(("0.0.0.0", PORT), H).serve_forever()
+

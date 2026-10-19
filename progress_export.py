@@ -39,6 +39,7 @@ def export(h):
     with A.LOCK,A.conn() as c:
         allow=(c.execute("SELECT v FROM meta WHERE k='progress_export_all'").fetchone() or {'v':'0'})['v']=='1'
         if not allow and not A.is_admin(h):return h._send(403,{'error':'目前僅管理員可匯出進度回報'})
+        audit_allowed=A.is_admin(h) or (c.execute("SELECT v FROM meta WHERE k='progress_audit_all'").fetchone() or {'v':'0'})['v']=='1'
     try:
         d=h._body()
         if not isinstance(d,dict):raise ValueError('格式錯誤')
@@ -51,7 +52,7 @@ def export(h):
         if scope=='filtered' and (not isinstance(ids,list) or len(ids)>10000 or any(type(i)!=int for i in ids)):
             raise ValueError('篩選清單無效')
         with A.LOCK,A.conn() as c:
-            allrows=[dict(r) for r in c.execute('SELECT * FROM progress_reports WHERE status!='trash' ORDER BY root_id,version,id')]
+            allrows=[dict(r) for r in c.execute("SELECT * FROM progress_reports WHERE status!='trash' ORDER BY root_id,version,id")]
             if scope=='single':rows=[r for r in allrows if r['id']==rid]
             elif scope=='task':rows=[r for r in allrows if r['task_id']==task_id]
             elif scope=='filtered':rows=[r for r in allrows if r['id'] in set(ids)]
@@ -61,7 +62,7 @@ def export(h):
             audit={}
             for r in rows:
                 r['files']=[dict(f) for f in c.execute('SELECT * FROM progress_files WHERE report_id=? ORDER BY rowid',(r['id'],))]
-                audit[r['id']]=[dict(a) for a in c.execute('SELECT * FROM progress_audit WHERE report_id=? ORDER BY id',(r['id'],))]
+                audit[r['id']]=[dict(a) for a in c.execute('SELECT * FROM progress_audit WHERE report_id=? ORDER BY id',(r['id'],))] if audit_allowed else []
         generated=datetime.now(A.TZ).strftime('%Y/%m/%d %H:%M:%S')
         pdf=pdf_report(rows,audit,generated)
         if fmt=='pdf':data=pdf;mime='application/pdf';name='XLeRobot_progress.pdf'
@@ -86,3 +87,4 @@ def export(h):
     except Exception as e:
         print('progress export failed:',repr(e),flush=True)
         h._send(502,{'error':'匯出失敗，請檢查附件與 PDF 服務'})
+

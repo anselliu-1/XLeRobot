@@ -19,7 +19,7 @@
       <div class="buy-images">${(p.images||[]).map(i=>`<figure><a href="${esc(i.url)}" target="_blank" rel="noopener"><img class="buy-photo" src="${esc(i.url)}" alt="${esc(i.original_name)}" loading="lazy"></a><figcaption class="muted">${esc(i.original_name)}</figcaption>${admin?`<button class="btn ghost" data-delimg="${i.id}">刪除圖片</button>`:''}</figure>`).join('')}</div>
       ${admin||perms.refund_view?`<details class="legacy"><summary>報銷管理：${esc(p.refund||'未開始')}</summary><div class="legacy-body">
       ${admin||perms.refund_edit?`<label>報銷狀態<select data-refund="${p.id}">${['未開始','待送件','審核中','已完成','不需報銷'].map(x=>`<option ${x===p.refund?'selected':''}>${x}</option>`).join('')}</select></label><button class="btn ghost" data-save-refund="${p.id}">儲存報銷狀態</button>`:`<p>${esc(p.refund||'未開始')}</p>`}
-      ${admin?`<h4>報銷附件（僅管理員可存取）</h4><div class="buy-receipts">${(p.receipts||[]).map(r=>`<p><a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.original_name)} ↗</a> <button class="btn ghost" data-delreceipt="${r.id}">刪除附件</button></p>`).join('')}</div><label class="btn ghost">上傳發票／報銷表 <input type="file" data-receipt="${p.id}" accept=".pdf,image/jpeg,image/png,image/webp" multiple hidden></label>`:''}</div></details>`:''}
+      ${admin?`<h4>報銷附件（僅管理員可存取）</h4><div class="buy-receipts">${(p.receipts||[]).map(r=>`<p><a href="${esc(r.url)}" data-admin-file data-file-name="${esc(r.original_name)}" target="_blank" rel="noopener">${esc(r.original_name)} ↗</a> <button class="btn ghost" data-delreceipt="${r.id}">刪除附件</button></p>`).join('')}</div><label class="btn ghost">上傳發票／報銷表 <input type="file" data-receipt="${p.id}" accept=".pdf,image/jpeg,image/png,image/webp" multiple hidden></label>`:''}</div></details>`:''}
       <div class="bar"><button class="btn ghost" data-edit="${p.id}">編輯</button><label class="btn ghost" style="cursor:pointer">上傳商品圖片 <input type="file" accept="image/jpeg,image/png,image/webp" data-upload="${p.id}" multiple hidden></label>${admin?`<button class="btn ghost" data-del="${p.id}">刪除項目</button>`:''}</div>
     </article>`).join(''):'<p class="muted">尚無採購項目，可由組員新增。</p>';
   }
@@ -89,3 +89,4 @@
   document.addEventListener('visibilitychange',()=>{if(!document.hidden){load();checkAdmin();}});
   $('#buyItems').addEventListener('focusout',()=>setTimeout(()=>{if(deferredRender&&!editingPurchase())load(true);},0));
 })();
+

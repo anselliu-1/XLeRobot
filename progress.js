@@ -49,7 +49,7 @@
   function card(r) {
     const files=r.files||[];
     return `<article class="blk pr-report ${r.status==='void'?'pr-void':''}" id="report-${r.id}">
-      <div class="pr-report-head"><div><h3>${esc(r.subject)} · 第 ${r.version} 次回報</h3><p class="muted">${esc(date(r.created))}${r.parent_id?' · 接續第 '+(r.version-1)+' 次回報':''}${showId()?' · 回報編號 #'+r.id:''}</p><p class="muted">回報人：${esc(r.reporter)}　｜　關聯工作：${esc(r.task_display||'未關聯')}</p></div><span class="tag">${r.status==='valid'?'有效':'已作廢'}</span></div>
+      <div class="pr-report-head"><div><h3>${esc(r.subject)} · 第 ${r.version} 次回報</h3><p class="muted">${esc(date(r.created))}${r.parent_id?' · 接續第 '+r.parent_version+' 次回報':''}${showId()?' · 回報編號 #'+r.id:''}</p><p class="muted">回報人：${esc(r.reporter)}　｜　關聯工作：${esc(r.task_display||'未關聯')}</p></div><span class="tag">${r.status==='valid'?'有效':'已作廢'}</span></div>
       <div class="pr-report-section"><h4>回報內容</h4><div class="pr-content">${esc(r.content)||'（無文字內容）'}</div>${r.status==='void'? `<p class="pr-reason">作廢原因：${esc(r.void_reason)}<br>${esc(date(r.void_at))}</p>`:''}</div>
       <div class="pr-report-section"><h4>附件（${files.length} 個）</h4><ul class="pr-files">${files.map(f=>`<li>${f.removed_at?`<span>${esc(f.name)}（已移除：${esc(f.reason)}）</span>`:`<a href="${f.url}">${esc(f.name)}</a><span class="muted">${fileSize(f.size)}</span>${admin?`<button class="btn ghost" data-remove="${f.id}" data-report="${r.id}">移除附件</button>`:''}`}</li>`).join('')||'<li class="muted">沒有附件</li>'}</ul></div>
       <div class="pr-report-section"><h4>回報操作</h4><div class="pr-actions">
@@ -336,3 +336,4 @@
   loadTasks();
   if(location.hash==='#progress') $('[data-view="progress"]').click();
 })();
+
