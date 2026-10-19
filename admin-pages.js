@@ -49,7 +49,7 @@
       const rows=group.map(f=>'<article class="hw file-entry"><header><h3>'+esc(f.original_name)+'</h3></header>'+
         '<div class="file-entry-body"><p class="muted">'+esc(title)+' · '+esc(f.parent_name)+' · '+Math.ceil((f.size||0)/1024)+' KB · '+esc(formatFileDate(f.created))+'</p>'+
         '<div class="file-entry-actions"><label><input type="checkbox" data-file-id="'+esc(f.id)+'" '+(selectedFileIds.has(String(f.id))?'checked':'')+'> 選取下載</label> <a class="btn ghost" href="'+esc(f.url)+'" target="_blank" rel="noopener">預覽／下載</a></div></div></article>').join('');
-      return '<details class="file-group" data-file-group="'+kind+'" '+(openFileGroups.has(kind)?'open':'')+'><summary><span class="file-group-title">'+esc(title)+'</span><span class="file-group-desc">'+esc(description)+'</span><span class="file-group-count">'+group.length+' 個檔案</span></summary><div class="file-group-body">'+(rows||'<p class="muted">目前沒有檔案。</p>')+'</div></details>';
+      return '<details class="file-group" data-file-group="'+kind+'" '+(openFileGroups.has(kind)?'open':'')+'><summary><span class="file-group-title">'+esc(title)+'</span><span class="file-group-desc">'+esc(description)+'</span><span class="file-group-count">'+group.length+' 個檔案</span></summary><div class="file-group-body">'+selection+(rows||'<p class="muted">目前沒有檔案。</p>')+'</div></details>';
     }).join('')||'<p class="muted">沒有符合條件的檔案。</p>';
     updateFileSelection();
   }
