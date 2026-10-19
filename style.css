@@ -593,3 +593,19 @@ body.tk-admin .tk{grid-template-columns:84px 1.8fr minmax(168px,1.1fr) 122px 50p
 #progress .pr-filters label{min-width:160px}
 #progress .pr-filters label:first-child{min-width:220px}
 @media(max-width:700px){#progress .pr-filters label{min-width:0}#progress .pr-filters label:first-child{min-width:0}}
+
+/* Staging: equal-height overview cards in each grid row */
+#overviewTopics{align-items:stretch;grid-auto-rows:1fr}
+#overviewTopics .overview-topic{height:100%;min-height:165px;display:flex;flex-direction:column}
+#overviewTopics .overview-topic header{min-height:54px;display:flex;align-items:center}
+#overviewTopics .overview-topic header h3{margin:0}
+#overviewTopics .overview-topic p:last-child{margin-top:auto;padding-top:8px}
+/* SVG dropdown chevrons stay centered independent of font metrics */
+#progress .pr-select-arrow{height:18px;width:18px;display:flex;align-items:center;justify-content:center;transform:none;font-size:inherit;line-height:1}
+#progress .pr-select-arrow svg{display:block;width:16px;height:16px}
+/* Center report-history disclosure icon vertically */
+#progress .pr-topic>summary{list-style:none;display:flex;align-items:center;gap:10px;min-height:52px;padding:13px 18px}
+#progress .pr-topic>summary::-webkit-details-marker{display:none}
+#progress .pr-topic>summary::before{content:'';display:block;flex:0 0 8px;width:8px;height:8px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(-45deg);transition:transform .15s;align-self:center}
+#progress .pr-topic[open]>summary::before{transform:rotate(45deg)}
+#progress .pr-topic>summary .muted{min-width:0}
