@@ -1,5 +1,6 @@
 """Immutable progress reports; isolated tables, object prefix and durable outbox."""
 import json, os, re, uuid, time, threading, urllib.request, urllib.parse
+import progress_export
 from email.parser import BytesParser
 from email.policy import default
 from datetime import datetime
@@ -171,7 +172,7 @@ def list_reports(h):
         # Include full histories for matching topics, even if earlier versions do not match.
         roots={r['root_id'] for r in reports if r['id'] in matched}
         items=[r for r in reports if r['root_id'] in roots]
-        return h._send(200,{'items':items,'matched_ids':matched,'reporters':people,'admin':A.is_admin(h),'show_report_ids':(c.execute("SELECT v FROM meta WHERE k='progress_show_ids'").fetchone() or {'v':'0'})['v']=='1'})
+        return h._send(200,{'items':items,'matched_ids':matched,'reporters':people,'admin':A.is_admin(h),'show_report_ids':(c.execute("SELECT v FROM meta WHERE k='progress_show_ids'").fetchone() or {'v':'0'})['v']=='1','export_all':(c.execute("SELECT v FROM meta WHERE k='progress_export_all'").fetchone() or {'v':'0'})['v']=='1'})
 
 def download(h,fid):
     with A.LOCK, A.conn() as c:
@@ -289,7 +290,9 @@ def route(h,method):
             origin=h.headers.get('Origin')
             if origin and urllib.parse.urlsplit(origin).netloc!=h.headers.get('Host'):
                 h._send(403,{'error':'不允許跨網站操作'}); return True
-        if method=='POST' and re.fullmatch(r'/api/progress/[1-9][0-9]*/relink',p):
+        if method=='POST' and p=='/api/progress/export':
+            progress_export.export(h)
+        elif method=='POST' and re.fullmatch(r'/api/progress/[1-9][0-9]*/relink',p):
             if not A.is_admin(h): h._send(403,{'error':'需要管理員'})
             else:
                 d=h._body()
@@ -311,10 +314,11 @@ def route(h,method):
             if not A.is_admin(h): h._send(403,{'error':'需要管理員'})
             else:
                 d=h._body()
-                if not isinstance(d,dict) or type(d.get('show_report_ids')) is not bool: raise ValueError('設定格式錯誤')
+                if not isinstance(d,dict) or not d or any(k not in ('show_report_ids','export_all') or type(v) is not bool for k,v in d.items()):raise ValueError('設定格式錯誤')
                 with A.LOCK,A.conn() as c:
-                    c.execute("INSERT OR REPLACE INTO meta(k,v) VALUES('progress_show_ids',?)",('1' if d['show_report_ids'] else '0',))
-                h._send(200,{'ok':True,'show_report_ids':d['show_report_ids']})
+                    if 'show_report_ids' in d:c.execute("INSERT OR REPLACE INTO meta(k,v) VALUES('progress_show_ids',?)",('1' if d['show_report_ids'] else '0',))
+                    if 'export_all' in d:c.execute("INSERT OR REPLACE INTO meta(k,v) VALUES('progress_export_all',?)",('1' if d['export_all'] else '0',))
+                h._send(200,{'ok':True})
         elif method=='GET' and p=='/api/progress': list_reports(h)
         elif method=='GET' and re.fullmatch('/api/progress-files/[a-f0-9]{32}',p): download(h,p.rsplit('/',1)[1])
         elif method=='POST' and p=='/api/progress': create(h)
