@@ -4,9 +4,10 @@
   const headers = () => ({'X-Admin-Key':localStorage.getItem('xle-admin') || ''});
   const fileSize = n => n<1024 ? n+' bytes' : n<1024*1024 ? (n/1024).toFixed(1)+' KB' : (n/1024/1024).toFixed(2)+' MB';
   let items = [], matched = new Set(), admin = false, request = 0, timer;
+  let pendingLoads = 0, lastSnapshot = '';
   const date = s => new Intl.DateTimeFormat('zh-TW',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date(s))+'（台灣）';
   async function api(url,options={}) {
-    const response = await fetch(url,{cache:'no-store',...options});
+    const response = await fetch(url,{cache:'no-store',signal:AbortSignal.timeout(15000),...options});
     const data = await response.json();
     if(!response.ok) throw Error(data.error || '操作失敗');
     return data;
@@ -23,6 +24,7 @@
       <div class="pr-audit" data-audit-list="${r.id}"></div></article>`;
   }
   function render() {
+    const closed = new Set([...$('#prItems').querySelectorAll('.pr-topic:not([open])')].map(el=>el.dataset.root));
     const asc=$('#prSort').value==='asc', sorter=(a,b)=>(asc?1:-1)*(a.id-b.id);
     const shown=items.filter(r=>matched.has(r.id));
     $('#prCount').textContent=`符合 ${shown.length} 筆回報；主題檢視會保留完整版本歷程。`;
@@ -32,25 +34,33 @@
       items.forEach(r=>{if(!groups.has(r.root_id))groups.set(r.root_id,[]);groups.get(r.root_id).push(r);});
       $('#prItems').innerHTML=[...groups.values()].sort((a,b)=>sorter(a.at(-1),b.at(-1))).map(g=>{
         const latest=g.at(-1);
-        return `<details class="pr-topic" open><summary>${esc(latest.subject)} <span class="muted">· ${g.length} 個版本 · 最近 ${esc(date(latest.created))}</span></summary>${g.sort(sorter).map(card).join('')}</details>`;
+        return `<details class="pr-topic" data-root="${latest.root_id}" ${closed.has(String(latest.root_id))?'':'open'}><summary>${esc(latest.subject)} <span class="muted">· ${g.length} 個版本 · 最近 ${esc(date(latest.created))}</span></summary>${g.sort(sorter).map(card).join('')}</details>`;
       }).join('');
     }
     if(!shown.length) $('#prItems').innerHTML='<p class="muted">沒有符合條件的回報。</p>';
   }
-  async function load() {
+  async function load(background=false) {
+    if(background===true && pendingLoads)return;
+    pendingLoads++;
     const seq=++request;
     try {
       const query=new URLSearchParams({q:$('#prSearch').value,reporter:$('#prReporter').value,status:$('#prStatus').value});
       const d=await api('/api/progress?'+query,{headers:headers()});
       if(seq!==request)return;
-      items=d.items; matched=new Set(d.matched_ids); admin=d.admin;
-      const selected=$('#prReporter').value;
-      $('#prReporter').innerHTML='<option value="">全部姓名</option>'+d.reporters.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');
-      $('#prReporter').value=selected; render();
+      const snapshot=JSON.stringify(d);
+      if(snapshot!==lastSnapshot){
+        items=d.items; matched=new Set(d.matched_ids); admin=d.admin;
+        const selected=$('#prReporter').value;
+        $('#prReporter').innerHTML='<option value="">全部姓名</option>'+d.reporters.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');
+        $('#prReporter').value=selected; render();lastSnapshot=snapshot;
+      }
+      $('#prSync').textContent='自動同步中：每 5 秒更新，保留正在填寫的內容與附件。';
       $('#prNotify').textContent='';
       if(admin){const n=await api('/api/progress/notification-status',{headers:headers()});
         $('#prNotify').textContent=`Discord：${n.configured?'已設定':'尚未設定'} · 待送 ${n.pending} · 重試中 ${n.failed}`;}
-    } catch(e) {$('#prCount').textContent='讀取失敗：'+e.message;}
+    } catch(e) {
+      if(seq===request)$('#prSync').textContent='同步暫時失敗，稍後會自動重試：'+e.message;
+    } finally {pendingLoads--;}
   }
   function cancel() {
     form.elements.parent_id.value=''; form.elements.subject.readOnly=false;
@@ -106,5 +116,9 @@
   $('[data-view="progress"]').addEventListener('click',load);
   window.addEventListener('xle-admin-change',load);
   window.addEventListener('storage',e=>{if(e.key==='xle-admin')load();});
+  const visible = () => !document.hidden && $('#progress').classList.contains('on');
+  setInterval(()=>{if(visible())load(true);},5000);
+  document.addEventListener('visibilitychange',()=>{if(visible())load(true);});
+  window.addEventListener('online',()=>{if(visible())load(true);});
   if(location.hash==='#progress') $('[data-view="progress"]').click();
 })();
