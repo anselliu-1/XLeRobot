@@ -3,7 +3,7 @@ import json, os, sqlite3, threading, time, uuid, re, mimetypes, urllib.request, 
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from datetime import datetime, timezone, timedelta
 import hashlib, hmac
-import progress, sys
+import progress, backup, sys
 progress.install(sys.modules[__name__])
 
 DB = os.environ.get("TASK_DB", os.path.join(os.path.dirname(os.path.abspath(__file__)), "data.db"))
@@ -225,7 +225,7 @@ def now_s():
 
 NOTIFY_EVENTS = {'task_add','task_edit','task_done','task_reopen','task_result','task_upload','task_delete',
                  'buy_add','buy_edit','buy_status','buy_image','buy_delete','buy_stock','buy_owner','buy_refund',
-                 'progress_add','progress_continue','progress_void','progress_file_remove'}
+                 'progress_add','progress_continue','progress_void','progress_file_remove','progress_restore'}
 IMAGE_EXT = {'.jpg','.jpeg','.png','.webp'}
 IMAGE_MAX = 10 * 1024 * 1024
 
@@ -547,6 +547,7 @@ class H(BaseHTTPRequestHandler):
         self._send(403, {"error": "owner only"}); return True
 
     def do_POST(self):
+        if backup.route(self): return
         if progress.route(self, "POST"): return
         p = self._path()
         if p == '/api/admin/files/zip':
@@ -898,6 +899,7 @@ class H(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     init()
     progress.init()
+    backup.init(sys.modules[__name__])
     threading.Thread(target=progress.worker, daemon=True).start()
     print(f"listening on {PORT}, db={DB}, attachment_storage={'bucket' if S3_ENABLED else 'local'}", flush=True)
     threading.Thread(target=mail_worker, daemon=True).start()

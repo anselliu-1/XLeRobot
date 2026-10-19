@@ -13,7 +13,7 @@ class ProgressTests(unittest.TestCase):
         app.UPLOAD_DIR=os.path.join(cls.temp.name,'uploads')
         app.S3_ENABLED=False
         app.ADMIN_HASH=hashlib.sha256(b'test-only-key').hexdigest()
-        app.init(); progress.init()
+        app.init(); progress.init(); app.backup.init(app)
         cls.http=None
         cls.base='http://127.0.0.1'
         if not os.environ.get('PROGRESS_IN_PROCESS'):
@@ -183,5 +183,74 @@ class ProgressTests(unittest.TestCase):
         self.assertEqual(saved,cfg,'Restart must preserve event preferences and master switch')
         _,status,_=self.req('/api/progress/notification-status',admin=True)
         self.assertFalse(status['enabled']);self.assertIn('recent_error',status)
+
+    def test_restore_effective(self):
+        rid=self.create(files=[('restore.txt',b'restore-test')])[1]['id']
+        path=f'/api/progress/{rid}/restore'
+        self.assertEqual(self.req(path,'POST',{'reason':'修正誤按'})[0],403)
+        self.assertEqual(self.req(path,'POST',{'reason':'修正誤按'},True)[0],409)
+        self.req(f'/api/progress/{rid}/void','POST',{'reason':'誤按作廢'},True)
+        self.assertEqual(self.req(path,'POST',{'reason':' '},True)[0],400)
+        with app.conn() as c:
+            fid=c.execute('SELECT id FROM progress_files WHERE report_id=?',(rid,)).fetchone()[0]
+        self.req(f'/api/progress/{rid}/remove-file','POST',{'reason':'移除誤傳','file_id':fid},True)
+        self.assertEqual(self.req(path,'POST',{'reason':'修正誤按'},True)[0],200)
+        with app.conn() as c:
+            self.assertEqual(c.execute('SELECT status FROM progress_reports WHERE id=?',(rid,)).fetchone()[0],'valid')
+            actions=[r[0] for r in c.execute('SELECT action FROM progress_audit WHERE report_id=? ORDER BY id',(rid,))]
+            self.assertEqual(actions,['新增回報','作廢回報','附件移除','恢復有效'])
+            self.assertEqual(c.execute('SELECT event FROM progress_outbox WHERE detail LIKE ? ORDER BY created DESC LIMIT 1',(f'%回報 #{rid}・%',)).fetchone()[0],'progress_restore')
+        self.assertEqual(self.req('/api/progress-files/'+fid)[0],404)
+        self.assertEqual(self.create({'reporter':'甲','subject':'a','parent_id':str(rid)})[0],201)
+
+    def test_backup_all_data_and_files(self):
+        import io,zipfile,uuid
+        self.assertEqual(self.req('/api/admin/backup','POST')[0],403)
+        self.create(files=[('progress-example.py',b'print(1)')])
+        os.makedirs(app.UPLOAD_DIR,exist_ok=True)
+        Path(app.UPLOAD_DIR,'backup-task.txt').write_bytes(b'task')
+        Path(app.UPLOAD_DIR,'backup-receipt.pdf').write_bytes(b'receipt')
+        with app.conn() as c:
+            c.execute("INSERT INTO attachments(id,task_id,original_name,stored_name,size,storage) VALUES('backup-task','s0','task.txt','backup-task.txt',4,'local')")
+            c.execute("INSERT INTO purchase_images VALUES('backup-image','p','image.png','backup-image.png','image/png',5,'bucket','now')")
+            c.execute("INSERT INTO purchase_receipts VALUES('backup-receipt','p','receipt.pdf','backup-receipt.pdf','application/pdf',7,'local','now')")
+        secret=uuid.uuid4().hex
+        def storage(method,key,*args):
+            self.assertEqual((method,key),('GET','purchases/backup-image.png'));return b'image',{}
+        try:
+            with patch.dict(os.environ,{'BACKUP_TMP_DIR':self.temp.name,'AWS_SECRET_ACCESS_KEY':secret}),patch.object(app,'s3_request',storage):
+                code,raw,headers=self.req('/api/admin/backup','POST',admin=True)
+            self.assertEqual(code,200);self.assertEqual(headers['Content-Type'],'application/zip')
+            with zipfile.ZipFile(io.BytesIO(raw)) as z:
+                self.assertIsNone(z.testzip())
+                manifest=json.loads(z.read('manifest.json'))
+                self.assertTrue({'tasks','purchases','project_risks','progress_reports','meta','progress_audit'}<=set(manifest['tables']))
+                self.assertTrue({'attachments','purchase_images','purchase_receipts','progress_files'}<=set(f['table'] for f in manifest['files']))
+                for f in manifest['files']:
+                    self.assertEqual(hashlib.sha256(z.read(f['archive_path'])).hexdigest(),f['sha256'])
+                self.assertEqual(hashlib.sha256(z.read('database/data.sqlite3')).hexdigest(),manifest['database_sha256'])
+                for name in z.namelist(): self.assertNotIn(secret.encode(),z.read(name))
+                dest=Path(self.temp.name)/'restored-test.sqlite3';dest.write_bytes(z.read('database/data.sqlite3'))
+                from contextlib import closing
+                with closing(app.sqlite3.connect(dest)) as c:
+                    self.assertEqual(c.execute('PRAGMA integrity_check').fetchone()[0],'ok')
+                    self.assertTrue(c.execute('SELECT COUNT(*) FROM progress_reports').fetchone()[0])
+            with app.conn() as c:
+                self.assertEqual(c.execute('SELECT status FROM admin_backup_audit ORDER BY created DESC LIMIT 1').fetchone()[0],'transferred')
+        finally:
+            with app.conn() as c:
+                c.execute("DELETE FROM attachments WHERE id='backup-task'")
+                c.execute("DELETE FROM purchase_images WHERE id='backup-image'")
+                c.execute("DELETE FROM purchase_receipts WHERE id='backup-receipt'")
+
+    def test_backup_missing_file_fails_closed(self):
+        rid=self.create(files=[('missing.txt',b'missing')])[1]['id']
+        with app.conn() as c: key=c.execute('SELECT object_key FROM progress_files WHERE report_id=?',(rid,)).fetchone()[0]
+        path=Path(app.UPLOAD_DIR)/key;path.unlink()
+        try:
+            with patch.dict(os.environ,{'BACKUP_TMP_DIR':self.temp.name}):
+                code,data,headers=self.req('/api/admin/backup','POST',admin=True)
+            self.assertEqual(code,503);self.assertIn('error',data);self.assertNotEqual(headers['Content-Type'],'application/zip')
+        finally: path.write_bytes(b'missing')
 
 if __name__=='__main__': unittest.main()

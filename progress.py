@@ -8,7 +8,7 @@ MAX = 50 * 1024 * 1024
 EXT = set(('.py .js .ts .tsx .jsx .c .cpp .h .hpp .ino .java .rs .go .sh .ps1 .yaml .yml .json .xml .html .css .md .txt .csv .log .toml .ipynb .zip .7z .rar .tar .gz .jpg .jpeg .png .gif .webp .mp4 .mov .webm .avi .pdf .doc .docx .xls .xlsx .ppt .pptx').split())
 UPLOADS = threading.BoundedSemaphore(2)
 EVENTS = {'新增回報':'progress_add','接續回報':'progress_continue',
-          '作廢回報':'progress_void','附件移除':'progress_file_remove'}
+          '作廢回報':'progress_void','附件移除':'progress_file_remove','恢復有效':'progress_restore'}
 
 def install(app):
     global A
@@ -50,6 +50,11 @@ def init():
             cfg['events']=list(dict.fromkeys(cfg.get('events',[])+list(EVENTS.values())))
             c.execute("INSERT OR REPLACE INTO meta(k,v) VALUES('notify_config',?)",(json.dumps(cfg),))
             c.execute("INSERT INTO meta(k,v) VALUES('progress_notify_controls_v1','1')")
+        if not c.execute("SELECT 1 FROM meta WHERE k='progress_restore_notify_v1'").fetchone():
+            cfg=A.notify_config(c)
+            cfg['events']=list(dict.fromkeys(cfg.get('events',[])+['progress_restore']))
+            c.execute("UPDATE meta SET v=? WHERE k='notify_config'",(json.dumps(cfg),))
+            c.execute("INSERT INTO meta(k,v) VALUES('progress_restore_notify_v1','1')")
 
 def event(c, rid, action, actor, reason='', fid=''):
     now = stamp()
@@ -239,6 +244,10 @@ def moderate(h,rid,action):
             if r['status']!='valid': return h._send(409,{'error':'回報已作廢'})
             c.execute('UPDATE progress_reports SET status=\'void\',void_reason=?,void_at=? WHERE id=?',(reason,stamp(),rid))
             event(c,rid,'作廢回報','已驗證管理員',reason)
+        elif action=='restore':
+            if r['status']!='void': return h._send(409,{'error':'回報已是有效狀態'})
+            c.execute("UPDATE progress_reports SET status='valid',void_reason='',void_at='' WHERE id=?",(rid,))
+            event(c,rid,'恢復有效','已驗證管理員',reason)
         else:
             fid=d.get('file_id')
             if not isinstance(fid,str): raise ValueError('請選擇附件')
@@ -267,7 +276,7 @@ def route(h,method):
         if method=='GET' and p=='/api/progress': list_reports(h)
         elif method=='GET' and re.fullmatch('/api/progress-files/[a-f0-9]{32}',p): download(h,p.rsplit('/',1)[1])
         elif method=='POST' and p=='/api/progress': create(h)
-        elif method=='POST' and re.fullmatch(r'/api/progress/[1-9][0-9]*/(void|remove-file)',p):
+        elif method=='POST' and re.fullmatch(r'/api/progress/[1-9][0-9]*/(void|restore|remove-file)',p):
             _,_,_,rid,action=p.split('/'); moderate(h,int(rid),action)
         elif method=='GET' and re.fullmatch(r'/api/progress/[1-9][0-9]*/audit',p):
             if not A.is_admin(h): h._send(403,{'error':'需要管理員'})

@@ -45,6 +45,25 @@
       a.href=url;a.download='XLeRobot_files.zip';a.click();setTimeout(()=>URL.revokeObjectURL(url),10000);
     }catch(e){alert(e.message);}finally{b.disabled=false;b.textContent='下載勾選檔案 ZIP';}
   };
+  $('#fullBackupDownload').onclick=async()=>{
+    if(!admin)return;
+    const button=$('#fullBackupDownload'),status=$('#fullBackupMsg');
+    button.disabled=true;status.textContent='正在建立資料庫快照、讀取附件並壓縮，請保留此頁…';
+    try{
+      const response=await fetch('/api/admin/backup',{method:'POST',headers:headers(),cache:'no-store'});
+      if(!response.ok){const d=await response.json();throw Error(d.error||'備份失敗');}
+      status.textContent='打包完成，正在下載 ZIP…';
+      const blob=await response.blob();
+      const expected=Number(response.headers.get('Content-Length'));
+      if(expected && blob.size!==expected)throw Error('下載不完整，請重新備份');
+      const disposition=response.headers.get('Content-Disposition')||'';
+      const filename=disposition.match(/filename="([^"]+)"/)?.[1]||'XLeRobot-backup.zip';
+      const url=URL.createObjectURL(blob),a=document.createElement('a');
+      a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
+      status.textContent='已交給瀏覽器下載：'+filename+'（'+(blob.size/1024/1024).toFixed(2)+' MB）。請確認已儲存到電腦。';
+    }catch(e){status.textContent='備份未完成：'+e.message;}
+    finally{button.disabled=false;}
+  };
   $('#adminSettingsLogout').onclick=()=>{
     const original=document.querySelector('#tkAdmin');
     if(original && original.textContent.includes('登出')){original.click();return;}

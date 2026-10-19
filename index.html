@@ -135,6 +135,11 @@
     <p class="muted">此頁僅管理員登入後顯示；設定資料由後端驗證權限。</p>
     <div class="hw"><header><h3>管理員登入狀態</h3></header><p>管理者模式已啟用。可在「分工 & 時程」登出。</p><button class="btn ghost" id="adminSettingsLogout">管理員登出</button></div>
     <div class="hw"><header><h3>系統資訊</h3></header><p>測試站：XLeRobot-Staging・v1.3.0 測試版</p></div>
+    <div class="hw"><header><h3>完整資料備份</h3></header>
+      <p>一鍵下載 ZIP：包含進度回報、分工時程、採購清單、風險與設定、操作紀錄，以及目前仍保留的附件、商品圖片和報銷憑證。</p>
+      <p class="muted">也包含資料庫快照、可讀取的 JSON、檔案核對清單與網站程式。已永久移除的檔案無法備份；雲端憑證與管理員金鑰不包含在內。打包期間請保留此頁，完成後請將 ZIP 儲存到電腦。</p>
+      <button class="btn" id="fullBackupDownload">一鍵備份全部資料與檔案（ZIP）</button><p id="fullBackupMsg" class="muted" role="status"></p>
+    </div>
     <details class="legacy" id="purchasePermissionsPanel" hidden><summary>管理員｜報銷權限設定</summary><div class="legacy-body">
     <label><input type="checkbox" id="refundView"> 允許組員查看報銷狀態</label><p><label><input type="checkbox" id="refundEdit"> 允許組員修改報銷狀態（需先允許查看）</label></p>
     <button class="btn" id="purchasePermSave">儲存權限設定</button><p class="muted" id="purchasePermMsg"></p></div></details>
@@ -142,7 +147,7 @@
     <div class="legacy-body"><p class="muted">通知透過 Railway 設定的 DISCORD_WEBHOOK_URL 傳送到 Discord 頻道。</p><p id="progressNotifyStatus" class="muted">進度回報通知狀態：載入中…</p>
     <label><input type="checkbox" id="notifyEnabled"> 啟用 Discord 通知</label>
     <p><label>寄送方式 <select id="notifyMode"><option value="instant">即時通知</option><option value="digest">10 分鐘合併通知</option></select></label></p>
-    <p class="muted">進度回報通知一律即時發送，不受「10 分鐘合併」影響。下方四個進度回報事件與其他通知共用總開關。關閉時不建立新通知，既有待送通知暫停；重新啟用後補送。</p>
+    <p class="muted">進度回報通知一律即時發送，不受「10 分鐘合併」影響。進度回報事件與其他通知共用總開關，包含恢復有效。關閉時不建立新通知，既有待送通知暫停；重新啟用後補送。</p>
     <div id="notifyEvents" class="buy-notify-grid"></div><button class="btn" id="notifySave">儲存通知設定</button><p id="notifyMsg" class="muted"></p></div></details>
 
   </section>
@@ -431,10 +436,10 @@
 <script src="data.js?v=20261007a"></script>
 <script src="app.js?v=20261007a"></script>
 <script src="tasks.js?v=20261007a"></script>
-<script src="purchases.js?v=20261019e"></script>
-<script src="admin-pages.js?v=20261012a"></script>
+<script src="purchases.js?v=20261019f"></script>
+<script src="admin-pages.js?v=20261019f"></script>
 <script src="risks-admin.js?v=20261012a"></script>
-<script src="progress.js?v=20261019d"></script>
+<script src="progress.js?v=20261019f"></script>
 <script>
 async function loadSiteInfo() {
   try {

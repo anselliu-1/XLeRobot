@@ -22,7 +22,7 @@
       ${r.status==='void'?`<p class="pr-reason">作廢原因：${esc(r.void_reason)}<br>${esc(date(r.void_at))}</p>`:''}
       <ul class="pr-files">${r.files.map(f=>`<li>${f.removed_at?`<span>${esc(f.name)}（已移除：${esc(f.reason)}）</span>`:`<a href="${f.url}">${esc(f.name)}</a> · ${fileSize(f.size)}${admin && r.status==='void'?` <button class="btn ghost" data-remove="${f.id}" data-report="${r.id}">移除附件</button>`:''}`}</li>`).join('')}</ul>
       <div class="pr-actions">${r.status==='valid'?`<button class="btn ghost" data-continue="${r.id}">接續此回報</button>`:''}
-      ${admin?`${r.status==='valid'?`<button class="btn ghost" data-void="${r.id}">作廢（填原因）</button>`:''}<button class="btn ghost" data-audit="${r.id}">操作紀錄</button>`:''}</div>
+      ${admin?`${r.status==='valid'?`<button class="btn ghost" data-void="${r.id}">作廢（填原因）</button>`:`<button class="btn ghost" data-restore="${r.id}">恢復有效（填原因）</button>`}<button class="btn ghost" data-audit="${r.id}">操作紀錄</button>`:''}</div>
       <div class="pr-audit" data-audit-list="${r.id}"></div></article>`;
   }
   function render() {
@@ -98,12 +98,12 @@
       if(b.dataset.audit){
         const d=await api('/api/progress/'+b.dataset.audit+'/audit',{headers:headers()});
         document.querySelector(`[data-audit-list="${b.dataset.audit}"]`).innerHTML=d.items.map(a=>`<p>${esc(date(a.created))} · ${esc(a.action)} · ${esc(a.actor)} ${esc(a.reason)}</p>`).join('');
-      } else if(b.dataset.void || b.dataset.remove){
-        const reason=prompt(b.dataset.remove?'移除附件的原因（檔案將永久移除，保留紀錄）':'作廢原因（必填，保留原始回報）');
+      } else if(b.dataset.void || b.dataset.remove || b.dataset.restore){
+        const reason=prompt(b.dataset.restore?'恢復有效的原因（已永久移除的附件無法恢復）':b.dataset.remove?'移除附件的原因（檔案將永久移除，保留紀錄）':'作廢原因（必填，保留原始回報）');
         if(!reason || !reason.trim())return;
         if(b.dataset.remove && !confirm('確認永久移除此附件？此操作無法復原。'))return;
-        const rid=b.dataset.void || b.dataset.report;
-        const d=await api('/api/progress/'+rid+'/'+(b.dataset.void?'void':'remove-file'),{method:'POST',headers:{...headers(),'Content-Type':'application/json'},body:JSON.stringify({reason,file_id:b.dataset.remove})});
+        const rid=b.dataset.void || b.dataset.restore || b.dataset.report;
+        const d=await api('/api/progress/'+rid+'/'+(b.dataset.void?'void':b.dataset.restore?'restore':'remove-file'),{method:'POST',headers:{...headers(),'Content-Type':'application/json'},body:JSON.stringify({reason,file_id:b.dataset.remove})});
         if(d.warning)alert(d.warning); await load();
       }
     } catch(e){alert(e.message);} finally {b.disabled=false;}
