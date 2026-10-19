@@ -53,7 +53,7 @@
       <input type="hidden" name="parent_id">
       <div class="pr-fields"><label>回報人（必填）<input name="reporter" required maxlength="80" autocomplete="name"></label>
       <label>主題（必填）<input name="subject" required maxlength="200"></label></div>
-      <label>回報內容<textarea name="content" rows="5" maxlength="10000" placeholder="這次做了什麼、測試結果、遇到的問題與下一步…"></textarea></label>
+      <label>回報內容（必填）<textarea name="content" required rows="5" maxlength="10000" placeholder="這次做了什麼、測試結果、遇到的問題與下一步…"></textarea></label>
       <label>多附件（每筆合計最多 50MB、20 個）<input name="files" type="file" multiple></label>
       <p class="muted">支援程式、壓縮檔、圖片、影片與文件；附件只供下載。時間由伺服器記錄（台灣 UTC+8）。送出後不可修改，請確認內容。接續回報不會複製舊附件。</p>
       <div class="pr-actions"><button class="btn" type="submit">確認送出回報</button><button class="btn ghost" id="prCancel" type="button" hidden>取消接續</button><span id="prUploadSize" class="muted"></span></div>
@@ -67,7 +67,7 @@
       <label>檢視<select id="prView"><option value="topic">依主題／完整版本歷程</option><option value="time">依時間</option></select></label>
       <button type="button" class="btn ghost" id="prRefresh">重新整理</button>
     </div>
-    <p id="prSync" class="muted">此分頁開啟時，每 5 秒自動同步。</p><p id="prCount" role="status"></p><div id="prItems"></div>
+    <p id="prSync" class="muted" role="status" aria-live="polite">同步中…</p><p id="prCount" role="status"></p><div id="prItems"></div>
   </section>
   <!-- 總覽：新方向優先，舊版內容收合 -->
   <section class="view on" id="overview">
@@ -134,7 +134,8 @@
     <h2 class="sec first">管理員設定</h2>
     <p class="muted">此頁僅管理員登入後顯示；設定資料由後端驗證權限。</p>
     <div class="hw"><header><h3>管理員登入狀態</h3></header><p>管理者模式已啟用。可在「分工 & 時程」登出。</p><button class="btn ghost" id="adminSettingsLogout">管理員登出</button></div>
-    <div class="hw"><header><h3>系統資訊</h3></header><p>測試站：XLeRobot-Staging・v1.3.0 測試版</p></div>
+    <div class="hw"><header><h3>系統資訊</h3></header><p>測試站：XLeRobot-Staging・v1.4.0 測試版</p></div>
+    <div class="hw"><header><h3>進度回報顯示設定</h3></header><label><input type="checkbox" id="progressShowIds"> 向一般組員顯示回報編號</label><p class="muted">預設關閉；管理員始終可查看編號。設定適用所有組員。</p><p id="progressShowIdsMsg" class="muted" role="status"></p></div>
     <div class="hw"><header><h3>完整資料備份</h3></header>
       <p>一鍵下載 ZIP：包含進度回報、分工時程、採購清單、風險與設定、操作紀錄，以及目前仍保留的附件、商品圖片和報銷憑證。</p>
       <p class="muted">也包含資料庫快照、可讀取的 JSON、檔案核對清單與網站程式。已永久移除的檔案無法備份；雲端憑證與管理員金鑰不包含在內。打包期間請保留此頁，完成後請將 ZIP 儲存到電腦。</p>
@@ -439,7 +440,7 @@
 <script src="purchases.js?v=20261019f"></script>
 <script src="admin-pages.js?v=20261019g"></script>
 <script src="risks-admin.js?v=20261012a"></script>
-<script src="progress.js?v=20261019g"></script>
+<script src="progress.js?v=20261019h"></script>
 <script>
 async function loadSiteInfo() {
   try {
