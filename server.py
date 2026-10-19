@@ -464,6 +464,15 @@ class H(BaseHTTPRequestHandler):
                             'mime':d['mime'],'size':d['size'],'created':d['created'],
                             'parent_id':d[parent],'parent_name':name,
                             'url':('/api/files/' if kind=='task' else '/api/purchase-images/' if kind=='image' else '/api/purchase-receipts/')+d['id']})
+                for pf in c.execute("""SELECT pf.id,pf.name,pf.size,pf.report_id,pr.subject,pr.reporter,pr.task_name,pr.created
+                    FROM progress_files pf JOIN progress_reports pr ON pr.id=pf.report_id
+                    WHERE pf.removed_at='' ORDER BY pr.id DESC"""):
+                    d=dict(pf)
+                    result.append({'id':d['id'],'kind':'progress','original_name':d['name'],
+                        'mime':'application/octet-stream','size':d['size'],'created':d['created'],
+                        'parent_id':str(d['report_id']),
+                        'parent_name':d['subject']+' · '+d['reporter']+((' · '+d['task_name']) if d['task_name'] else ''),
+                        'url':'/api/progress-files/'+d['id']})
                 return self._send(200,{'files':result})
         if p == '/api/purchases':
             with LOCK, conn() as c: return self._send(200, {'purchases':purchase_rows(c,is_admin(self)),'permissions':purchase_permissions(c) if is_admin(self) else {'refund_view':purchase_permissions(c)['refund_view'],'refund_edit':purchase_permissions(c)['refund_edit']}})
@@ -591,7 +600,15 @@ class H(BaseHTTPRequestHandler):
                         for table,folder in [('attachments','uploads'),('purchase_images','purchases'),('purchase_receipts','receipts')]:
                             row=c.execute('SELECT * FROM '+table+' WHERE id=?',(ident,)).fetchone()
                             if row:prefix=folder;break
-                        if not row:continue
+                        if not row:
+                            pf=c.execute("SELECT * FROM progress_files WHERE id=? AND removed_at=''",(ident,)).fetchone()
+                            if pf:
+                                if pf['storage']=='bucket':data,_=s3_request('GET',pf['object_key'])
+                                else:
+                                    with open(os.path.join(UPLOAD_DIR,pf['object_key']),'rb') as f:data=f.read()
+                                name=os.path.basename(pf['name']).replace('\\','_').replace('/','_')
+                                z.writestr(str(n+1).zfill(2)+'_progress_'+name,data)
+                            continue
                         if row['storage']=='bucket':data,_=s3_request('GET',prefix+'/'+row['stored_name'])
                         else:
                             with open(os.path.join(UPLOAD_DIR,row['stored_name']),'rb') as f:data=f.read()
