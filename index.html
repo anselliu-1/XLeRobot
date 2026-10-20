@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css?v=20261020attachments1">
-<link rel="stylesheet" href="progress.css?v=20261020wide1">
+<link rel="stylesheet" href="progress.css?v=20261020limits1">
 </head>
 <body>
 <a class="skip" href="#main">跳至主要內容</a>
@@ -60,7 +60,8 @@
       <label>主題（必填）<input name="subject" required maxlength="200"></label></div>
       <label>關聯工作項目（選填）<select name="task_id" id="prTask"><option value="">不關聯工作項目</option></select></label>
       <label>回報內容（必填）<textarea name="content" required rows="5" maxlength="10000" placeholder="這次做了什麼、測試結果、遇到的問題與下一步…（上限 10,000 字）"></textarea></label>
-      <label class="pr-file-picker"><span>＋ 加入附件</span><input name="files" type="file" multiple aria-label="加入附件"></label><p class="muted pr-upload-hint">最多 <strong>20 個檔案</strong>，合計<strong>不得超過 50 MB</strong>。</p><ul id="prUploadList" class="pr-upload-list" aria-label="待送附件清單"></ul>
+      <label class="pr-file-picker"><span>＋ 加入附件</span><input name="files" type="file" multiple aria-label="加入附件"></label><p id="prUploadHint" class="muted pr-upload-hint">最多 <strong>20 個檔案</strong>，合計<strong>不得超過 50 MB</strong>。</p><p id="prUploadErrors" class="pr-file-error" role="status" aria-live="polite"></p>
+<ul id="prUploadList" class="pr-upload-list" aria-label="待送附件清單"></ul>
       <p class="muted pr-submit-help"><span>附件可預覽或下載，依格式支援。時間由系統記錄。</span><span>送出後不可修改；接續回報不帶入舊附件。</span></p>
       <div class="pr-actions"><button class="btn" type="submit">確認送出回報</button><button class="btn ghost" id="prCancel" type="button">取消</button><span id="prUploadSize" class="muted"></span></div>
       <p id="prMessage" role="status" aria-live="polite"></p>
@@ -481,7 +482,7 @@
 <script src="purchases.js?v=20261020approved1"></script>
 <script src="admin-pages.js?v=20261020attachments1"></script>
 <script src="risks-admin.js?v=20261012a"></script>
-<script src="progress.js?v=20261020wide1"></script>
+<script src="progress.js?v=20261020limits1"></script>
 <script>
 async function loadSiteInfo() {
   try {
@@ -849,6 +850,7 @@ loadSiteInfo();
 
 </script></body>
 </html>
+
 
 
 

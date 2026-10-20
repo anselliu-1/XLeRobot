@@ -21,33 +21,20 @@
 .pr-file-picker:focus-within{outline:2px solid var(--accent);outline-offset:3px}
 .pr-upload-list li{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--line)}
 .pr-upload-list li>span{overflow-wrap:anywhere}
-.pr-preview-dialog{width:min(980px,94vw);max-height:92vh;box-sizing:border-box;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:20px}
-.pr-preview-dialog::backdrop{background:#0009}
-.pr-preview-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
-.pr-preview-head strong{overflow-wrap:anywhere;min-width:0}
-.pr-preview-body{max-height:65vh;overflow:auto}
-.pr-preview-body img,.pr-preview-body video{display:block;max-width:100%;max-height:62vh;margin:auto}
-.pr-preview-body iframe{width:100%;height:62vh;border:0;background:white}
-.pr-preview-body pre{white-space:pre-wrap;overflow-wrap:anywhere;padding:12px;background:var(--surface);font-size:13px}
-@media(max-width:600px){.pr-upload-list li{grid-template-columns:minmax(0,1fr) auto}.pr-upload-list li small{grid-row:2}.pr-upload-list li button{grid-column:2;grid-row:1/3}.pr-preview-dialog{padding:12px}}
 
-/* Spacious native preview: keep browser document controls and maximize reading space. */
-.pr-preview-dialog{width:95vw;height:95vh;height:95dvh;max-width:none;max-height:none;padding:14px;overflow:hidden}
-.pr-preview-dialog[open]{display:flex;flex-direction:column;gap:12px}
-.pr-preview-head{flex:none;min-width:0;gap:16px;margin:0}
-.pr-preview-head strong{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.pr-preview-actions{display:flex;flex:none;gap:8px;align-items:center}
-.pr-preview-body{flex:1;min-width:0;min-height:0;max-height:none;display:flex;align-items:center;justify-content:center;overflow:auto}
-.pr-preview-body iframe{display:block;flex:1;width:100%;height:100%;min-height:0}
-.pr-preview-body img,.pr-preview-body video{max-width:100%;max-height:100%;object-fit:contain}
-.pr-preview-body pre{align-self:stretch;width:100%;min-height:100%;box-sizing:border-box;margin:0;font-size:14px;line-height:1.7}
+.pr-files{list-style:none;padding:0}
+.pr-files li{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 0;border-bottom:1px solid var(--line)}
+.pr-file-info{min-width:0;overflow-wrap:anywhere}.pr-file-size{display:block;margin-top:6px}
+.pr-file-actions{display:flex;gap:8px;flex-shrink:0;flex-wrap:wrap}
+.pr-file-error{color:var(--c,#eb8b82);white-space:pre-line;line-height:1.6;overflow-wrap:anywhere}
+.pr-upload-list .pr-file-error{grid-column:1/-1}
+.pr-file-invalid{border-left:3px solid var(--c,#eb8b82);padding-left:10px!important}
 #prForm .pr-submit-help{margin:16px 0;line-height:1.7}
 #prForm .pr-submit-help span{display:block}
 @media(max-width:600px){
-  .pr-preview-dialog{width:100vw;height:100vh;height:100dvh;border:0;border-radius:0;padding:10px;gap:10px}
-  .pr-preview-head{flex-wrap:wrap;gap:8px}
-  .pr-preview-head strong{flex:1 1 100%;font-size:13px}
-  .pr-preview-actions{width:100%;justify-content:flex-end;gap:6px}
-  .pr-preview-actions .btn{padding:7px 10px;font-size:13px}
+ .pr-upload-list li{grid-template-columns:minmax(0,1fr) auto}
+ .pr-upload-list li>small.muted{grid-row:2}
+ .pr-upload-list li button{grid-column:2;grid-row:1/3}
+ .pr-files li{align-items:flex-start;flex-wrap:wrap}
+ .pr-file-info{flex:1 1 180px}.pr-file-actions{margin-left:auto}
 }
-

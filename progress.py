@@ -5,8 +5,30 @@ from email.policy import default
 from datetime import datetime
 
 MAX = 50 * 1024 * 1024
+MAX_FILES = 20
 EXT = set(('.py .js .ts .tsx .jsx .c .cpp .h .hpp .ino .java .rs .go .sh .ps1 .yaml .yml .json .xml .html .css .md .txt .csv .log .toml .ipynb .zip .7z .rar .tar .gz .jpg .jpeg .png .gif .webp .mp4 .mov .webm .avi .pdf .doc .docx .xls .xlsx .ppt .pptx').split())
 UPLOADS = threading.BoundedSemaphore(2)
+EXT.update('.m4v .mkv .wmv .mpg .mpeg .3gp .3g2 .ts .mts .m2ts .flv .ogv'.split())
+TEXT_PREVIEW_EXT=set('.txt .csv .json .log .md .py .js .ts .c .cpp .h .css .yaml .yml .ini .xml'.split())
+MEDIA_PREVIEW_EXT=set('.png .jpg .jpeg .gif .webp .pdf .mp4 .m4v .webm .ogv'.split())
+TEXT_PREVIEW_MAX=1024*1024
+
+def upload_policy():
+    return {'allowed_extensions':sorted(EXT),'max_files':MAX_FILES,'max_total_bytes':MAX}
+
+def preview_supported(name,size):
+    ext=os.path.splitext(name)[1].lower()
+    # .ts is ambiguous (TypeScript or transport-stream video), so list it as download-only.
+    return ext in MEDIA_PREVIEW_EXT or ext in TEXT_PREVIEW_EXT and ext!='.ts' and size<=TEXT_PREVIEW_MAX
+
+def attachment_errors(files):
+    errors=[];total=sum(len(data) for name,data in files)
+    if len(files)>MAX_FILES:errors.append(f'附件共 {len(files)} 個，最多 {MAX_FILES} 個，超出 {len(files)-MAX_FILES} 個')
+    if total>MAX:errors.append(f'附件合計 {total/1024/1024:.2f} MB，上限 50 MB，超出 {total-MAX:,} bytes')
+    for name,data in files:
+        ext=os.path.splitext(name)[1].lower()
+        if ext not in EXT:errors.append('不支援的附件格式：'+name+'（'+(ext or '無副檔名')+'）')
+    return errors
 EVENTS = {'新增回報':'progress_add','接續回報':'progress_continue',
           '作廢回報':'progress_void','附件移除':'progress_file_remove','恢復有效':'progress_restore'}
 
@@ -145,8 +167,8 @@ def text_field(value, limit, label, required=False):
 def read_form(h):
     try: n=int(h.headers.get('Content-Length','0'))
     except ValueError: raise ValueError('無效檔案長度')
-    if h.headers.get('Transfer-Encoding') or n<=0 or n>MAX+512*1024:
-        raise ValueError('每筆附件合計上限 50MB')
+    if h.headers.get('Transfer-Encoding') or n<=0:raise ValueError('無效上傳長度')
+    if n>MAX+512*1024:raise ValueError('附件上傳大小超過限制，每筆附件合計上限 50 MB')
     typ=h.headers.get('Content-Type','')
     if not typ.startswith('multipart/form-data;') or len(typ)>300: raise ValueError('請使用表單上傳')
     h.connection.settimeout(30)
@@ -156,7 +178,8 @@ def read_form(h):
     boundary=re.search(r'boundary=(?:"([^"]+)"|([^;\s]+))',typ)
     if not boundary: raise ValueError('無效表單邊界')
     delimiter=(boundary.group(1) or boundary.group(2)).encode('ascii')
-    if not 1<=len(delimiter)<=70 or raw.count(b'\r\n--'+delimiter)>25: raise ValueError('表單欄位或附件過多')
+    if not 1<=len(delimiter)<=70:raise ValueError('無效表單邊界')
+    if raw.count(b'\r\n--'+delimiter)>100:raise ValueError('附件數量過多，每筆最多 20 個附件')
     msg=BytesParser(policy=default).parsebytes(('Content-Type: '+typ+'\r\nMIME-Version: 1.0\r\n\r\n').encode()+raw)
     if not msg.is_multipart() or msg.defects: raise ValueError('無效上傳表單')
     fields={}; files=[]; total=0
@@ -167,16 +190,16 @@ def read_form(h):
         name=part.get_filename()
         if name is not None:
             if not name and not data: continue
-            if key!='files' or len(files)>=20: raise ValueError('最多 20 個附件')
+            if key!='files': raise ValueError('無效附件欄位')
             name=name.replace('\\','/').split('/')[-1]
             if not name or len(name)>180 or any(ord(ch)<32 or ord(ch)==127 for ch in name): raise ValueError('無效檔名')
-            if os.path.splitext(name)[1].lower() not in EXT: raise ValueError('不支援的附件類型：'+name)
             total+=len(data)
-            if total>MAX: raise ValueError('每筆附件合計上限 50MB')
             files.append((name,data))
         else:
             if key not in ('reporter','subject','content','parent_id','task_id') or key in fields or len(data)>45000: raise ValueError('無效表單欄位')
             fields[key]=data.decode('utf-8',errors='strict')
+    errors=attachment_errors(files)
+    if errors:raise ValueError('；'.join(errors))
     return fields,files
 
 def list_reports(h):
@@ -194,7 +217,7 @@ def list_reports(h):
                 current=c.execute('SELECT task FROM tasks WHERE id=?',(r['task_id'],)).fetchone()
                 r['task_display']=current['task'] if current else r['task_name']+'（原工作已移除）'
             else: r['task_display']=''
-            r['files']=[{**dict(f),'url':'/api/progress-files/'+f['id'] if not f['removed_at'] else None} for f in c.execute('SELECT id,name,size,removed_at,reason FROM progress_files WHERE report_id=?',(r['id'],))]
+            r['files']=[{**dict(f),'url':'/api/progress-files/'+f['id'] if not f['removed_at'] else None,'preview_url':'/api/progress-files/'+f['id']+'/preview' if not f['removed_at'] and preview_supported(f['name'],f['size']) else None} for f in c.execute('SELECT id,name,size,removed_at,reason FROM progress_files WHERE report_id=?',(r['id'],))]
         people=sorted({r['reporter'] for r in reports})
         matched=[r['id'] for r in reports if (not who or r['reporter']==who) and (status=='all' or r['status']==status) and (not q or q in '\n'.join([r['reporter'],r['subject'],r['content']]+[f['name'] for f in r['files']]).casefold())]
         # Include full histories for matching topics, even if earlier versions do not match.
@@ -211,7 +234,8 @@ def preview_kind(name,data):
     if ext=='.pdf' and data.startswith(b'%PDF-'):return 'application/pdf'
     if ext in ('.mp4','.m4v') and data[4:8]==b'ftyp':return 'video/mp4'
     if ext=='.webm' and data.startswith(b'\x1a\x45\xdf\xa3'):return 'video/webm'
-    if ext in ('.txt','.csv','.json','.log','.md','.py','.js','.ts','.c','.cpp','.h','.css','.yaml','.yml','.ini','.xml') and len(data)<=1024*1024 and b'\x00' not in data:
+    if ext=='.ogv' and data.startswith(b'OggS'):return 'video/ogg'
+    if ext in TEXT_PREVIEW_EXT and len(data)<=TEXT_PREVIEW_MAX and b'\x00' not in data:
         try:data.decode('utf-8-sig');return 'text/plain; charset=utf-8'
         except UnicodeDecodeError:pass
     return None
@@ -457,6 +481,7 @@ def route(h,method):
                 h._send(200,{'ok':True})
         elif method=='GET' and p=='/api/progress/trash':trash_list(h)
         elif method=='POST' and re.fullmatch(r'/api/progress/[1-9][0-9]*/delete',p):permanently_delete(h,int(p.split('/')[3]))
+        elif method=='GET' and p=='/api/progress/upload-policy':h._send(200,upload_policy())
         elif method=='GET' and p=='/api/progress': list_reports(h)
         elif method=='GET' and re.fullmatch('/api/progress-files/[a-f0-9]{32}/preview',p): download(h,p.split('/')[3],True)
         elif method=='GET' and re.fullmatch('/api/progress-files/[a-f0-9]{32}',p): download(h,p.rsplit('/',1)[1])
@@ -481,6 +506,7 @@ def route(h,method):
         print('progress request failed:',type(exc).__name__,flush=True)
         h.close_connection=True; h._send(503,{'error':'儲存服務暫時無法使用，請重新整理確認後再試'})
     return True
+
 
 
 
