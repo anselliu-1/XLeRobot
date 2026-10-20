@@ -100,7 +100,7 @@
         $('#prReporter').innerHTML='<option value="">全部姓名</option>'+d.reporters.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');
         $('#prReporter').value=selected; render();lastSnapshot=snapshot;
       }
-      const clock=new Date().toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+      const clock=new Date().toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23',timeZone:'Asia/Taipei'});
       syncMessage('已連線・全組即時同步（最後同步 '+clock+'）','connected');
     } catch(e) {
       if(seq===request)syncMessage('連線中斷，正在重試…','error');

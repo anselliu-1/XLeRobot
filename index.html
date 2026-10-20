@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261020datetime1">
+<link rel="stylesheet" href="style.css?v=20261020single2">
 <link rel="stylesheet" href="progress.css?v=20261019b">
 </head>
 <body>
@@ -466,12 +466,12 @@
 <script src="data.js?v=20261007a"></script>
 <script src="app.js?v=20261019g"></script>
 <script src="nav-scroll.js?v=20261019nav1"></script>
-<script src="tasks.js?v=20261020datetime1"></script>
+<script src="tasks.js?v=20261020single2"></script>
 <script src="admin-files.js?v=20261019fix1"></script>
 <script src="purchases.js?v=20261020approved1"></script>
 <script src="admin-pages.js?v=20261019fix1"></script>
 <script src="risks-admin.js?v=20261012a"></script>
-<script src="progress.js?v=20261019fix1"></script>
+<script src="progress.js?v=20261020single2"></script>
 <script>
 async function loadSiteInfo() {
   try {
@@ -481,7 +481,7 @@ async function loadSiteInfo() {
     const data = await res.json();
 
     document.getElementById("deploy-time").textContent =
-      data.deploy_time || "無法取得";
+      (data.deploy_time || "無法取得").replace(/\s*[（(]UTC\+8[）)]\s*$/, "");
 
     document.getElementById("site-version").textContent =
       data.version || "無法取得";
