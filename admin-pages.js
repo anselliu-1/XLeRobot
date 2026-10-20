@@ -161,7 +161,7 @@
       if(restoreToken)await restoreRequest('cancel',{token:restoreToken});restoreToken='';
       const d=await restoreRequest('preview',file,true);restoreToken=d.token;
       const labels={tasks:'分工工作',progress_reports:'進度回報',purchases:'採購項目',progress_files:'回報附件紀錄',project_risks:'困難與展出'};
-      $('#restoreBackupPreview').innerHTML='<p>備份時間：'+esc(d.created)+' · 版本：'+esc(d.version||'未標示')+'</p><table><thead><tr><th>資料</th><th>目前</th><th>備份</th></tr></thead><tbody>'+Object.entries(labels).map(([k,label])=>'<tr><td>'+label+'</td><td>'+(d.current_tables[k]||0)+'</td><td>'+(d.tables[k]||0)+'</td></tr>').join('')+'</tbody></table><p>已核對 '+d.files+' 個附件 · '+(d.bytes/1024/1024).toFixed(2)+' MB</p><p>'+esc(d.warning)+'</p>';
+      $('#restoreBackupPreview').innerHTML='<p>備份時間：'+esc(formatFileDate(d.created))+' · 版本：'+esc(d.version||'未標示')+'</p><table><thead><tr><th>資料</th><th>目前</th><th>備份</th></tr></thead><tbody>'+Object.entries(labels).map(([k,label])=>'<tr><td>'+label+'</td><td>'+(d.current_tables[k]||0)+'</td><td>'+(d.tables[k]||0)+'</td></tr>').join('')+'</tbody></table><p>已核對 '+d.files+' 個附件 · '+(d.bytes/1024/1024).toFixed(2)+' MB</p><p>'+esc(d.warning)+'</p>';
       restoreApply.hidden=false;restoreCancel.hidden=false;restoreMsg.textContent='檢查通過；尚未還原。預覽 20 分鐘內有效。還原會覆蓋目前資料，請與其他使用者確認停止編輯。';
     }catch(e){restoreMsg.textContent=e.message;}
     finally{restoreCheck.disabled=false;}
