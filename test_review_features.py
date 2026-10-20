@@ -75,6 +75,25 @@ class ReviewFeatures(unittest.TestCase):
                     for item in source.infolist():z.writestr(item,source.read(item.filename))
                     z.writestr('../escape.txt',b'bad')
             self.assertEqual(self.preview(out.getvalue())[0],400)
+    def test_failed_restore_reclaims_staged_local_attachments(self):
+        # Use disposable local storage; fail after attachments are staged, before DB replacement.
+        code,report,_=self.create({'reporter':'rollback','subject':'cleanup','content':'fixture'},[('rollback.txt',b'clean me')])
+        self.assertEqual(code,201)
+        raw=self.archive()
+        with patch.dict(os.environ,{'RAILWAY_ENVIRONMENT_NAME':'staging'}):
+            code,preview,_=self.preview(raw)
+            self.assertEqual(code,200,preview)
+            session=restore_backup.SESSIONS[preview['token']]
+            upload_root=Path(app.UPLOAD_DIR)
+            before={str(p) for p in upload_root.rglob('*') if p.is_file()}
+            with patch.object(restore_backup,'fingerprint',return_value='changed'):
+                with self.assertRaisesRegex(ValueError,'已變更'):
+                    restore_backup.apply_restore(app,session,preview['token'])
+            after={str(p) for p in upload_root.rglob('*') if p.is_file()}
+            self.assertEqual(before,after)
+            with app.conn() as c:
+                self.assertTrue(c.execute('SELECT 1 FROM progress_reports WHERE id=?',(report['id'],)).fetchone())
+
     def test_local_restore_transaction_and_safety_copy(self):
         code,report,_=self.create({'reporter':'local','subject':'restore fixture','content':'original'},[('restore.txt',b'restore fixture')])
         self.assertEqual(code,201);raw=self.archive()
