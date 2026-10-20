@@ -16,6 +16,9 @@
 
 
 .pr-upload-list{list-style:none;padding:0;margin:12px 0}
+.pr-file-picker{position:relative;width:max-content;max-width:100%;padding:10px 14px;border:1px solid var(--line);border-radius:8px;background:var(--surface);cursor:pointer;box-sizing:border-box}
+#progress .pr-file-picker input[type=file]{position:absolute;inset:0;opacity:0;width:100%;height:100%;padding:0;cursor:pointer}
+.pr-file-picker:focus-within{outline:2px solid var(--accent);outline-offset:3px}
 .pr-upload-list li{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--line)}
 .pr-upload-list li>span{overflow-wrap:anywhere}
 .pr-preview-dialog{width:min(980px,94vw);max-height:92vh;box-sizing:border-box;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:20px}
