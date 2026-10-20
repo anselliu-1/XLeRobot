@@ -46,7 +46,7 @@ async function run(){
   vm.createContext(taskContext);vm.runInContext(taskCode,taskContext);
   taskContext.response={ok:true,json:async()=>({tasks:[{id:'a',done:true,done_date:'2026-10-20 13:00'}]})};
   await vm.runInContext("saveTask('a',{done_date:'2026-10-20T13:00'})",taskContext);
-  assert.equal(done.checked,true);assert.equal(date.value,'2026-10-20T13:00');assert.equal(label.textContent,'已完成');
+  assert.equal(done.checked,true);assert.equal(date.value,'2026-10-20 13:00');assert.equal(label.textContent,'已完成');
   taskContext.response={ok:false,json:async()=>({error:'offline'})};await vm.runInContext("saveTask('a',{note:'UNSAVED'})",taskContext);
   assert.equal(vm.runInContext("taskDrafts.get('a').note",taskContext),'UNSAVED');assert.ok(feedback.innerHTML.includes('重試儲存'));
   taskContext.response={ok:true,json:async()=>({tasks:[{id:'a',done:true,done_date:'2026-10-20 13:00',note:'UNSAVED'}]})};
