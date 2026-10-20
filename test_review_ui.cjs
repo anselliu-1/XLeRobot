@@ -7,6 +7,7 @@ const form={elements:Object.assign(Object.values(fields),fields),hidden:false,qu
 const context={form,$:s=>{if(!nodes.has(s))nodes.set(s,node());return nodes.get(s);},draftFields:()=>'',esc:s=>String(s).replaceAll('<','&lt;'),fileSize:n=>n+' bytes',Set,JSON,taskOptions:[],showId:()=>false};
 vm.createContext(context);
 vm.runInContext(source.slice(source.indexOf('  let submittedFields'),source.indexOf('  const mayLeave')),context);
+vm.runInContext("uploadPolicy={max_files:20,max_total_bytes:50*1024*1024,allowed_extensions:['.txt']}",context);
 vm.runInContext(source.slice(source.indexOf('  form.elements.files.onchange'),source.indexOf('  form.onsubmit')),context);
 const f=(name,size=5)=>({name,size,lastModified:1,type:'text/plain'});
 function add(files){fields.files.files=files;fields.files.value='selected';fields.files.onchange();}
@@ -14,8 +15,10 @@ function names(){return Array.from(vm.runInContext('queuedFiles.map(f=>f.name)',
 add([f('first.txt')]);add([f('second.txt')]);assert.deepEqual(names(),['first.txt','second.txt']);
 add([f('second.txt')]);assert.equal(names().length,2);
 nodes.get('#prUploadList').onclick({target:{closest:()=>({dataset:{unqueue:'0'}})}});assert.deepEqual(names(),['second.txt']);
-add([f('huge.txt',51*1024*1024)]);assert.deepEqual(names(),['second.txt']);assert.match(nodes.get('#prMessage').textContent,/未加入/);
-add(Array.from({length:20},(_,i)=>f('x'+i)));assert.deepEqual(names(),['second.txt']);
+add([f('huge.txt',51*1024*1024)]);assert.deepEqual(names(),['second.txt','huge.txt']);assert.match(nodes.get('#prUploadErrors').textContent,/上限/);
+nodes.get('#prUploadList').onclick({target:{closest:()=>({dataset:{unqueue:'1'}})}});
+add(Array.from({length:20},(_,i)=>f('x'+i)));assert.equal(names().length,21);assert.match(nodes.get('#prUploadErrors').textContent,/最多 20/);
+for(let i=20;i>=1;i--)nodes.get('#prUploadList').onclick({target:{closest:()=>({dataset:{unqueue:String(i)}})}});assert.deepEqual(names(),['second.txt']);
 assert.equal(fields.files.value,'');assert.match(nodes.get('#prUploadList').innerHTML,/second.txt/);
 let answer=false,request;
 context.FormData=class{constructor(){this.map=new Map(Object.entries(fields).filter(([k])=>k!=='files').map(([k,v])=>[k,v.value]));this.attachments=[];}get(k){return this.map.get(k);}set(k,v){this.map.set(k,v);}delete(){}append(k,file,name){this.attachments.push(name);}};
