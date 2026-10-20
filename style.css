@@ -627,3 +627,18 @@ body.tk-admin .tk{grid-template-columns:84px 1.8fr minmax(168px,1.1fr) 122px 50p
 #fileadmin #fileType{appearance:none!important;-webkit-appearance:none!important;background-color:var(--surface)!important;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23c5cbd1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")!important;background-repeat:no-repeat!important;background-size:16px 16px!important;background-position:right 16px center!important;padding:9px 42px 9px 14px!important;text-overflow:ellipsis}
 #fileadmin .file-group-select input{accent-color:var(--accent)}
 
+
+/* Staging layout A: vertical co-owners and a wider, fully visible goal column. */
+@media (min-width:901px){
+  .tk,body:not(.tk-admin) .tk{
+    grid-template-columns:84px minmax(175px,1.55fr) 100px 122px 52px minmax(360px,3.5fr) minmax(145px,1.15fr);
+    min-width:1090px;
+  }
+  body.tk-admin .tk{
+    grid-template-columns:84px minmax(175px,1.55fr) 100px 122px 52px minmax(360px,3.5fr) minmax(145px,1.15fr) 176px 30px;
+    min-width:1300px;
+  }
+}
+#tkTable .whos{display:flex;flex-direction:column;flex-wrap:nowrap;gap:3px;min-width:0}
+#tkTable .whos .in{flex:none;width:100%;min-width:0;box-sizing:border-box}
+#tkTable textarea[data-k="note"]{white-space:pre-wrap;overflow-wrap:anywhere}
