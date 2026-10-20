@@ -674,7 +674,7 @@ body.tk-admin .tk{grid-template-columns:84px 1.8fr minmax(168px,1.1fr) 122px 50p
 /* Staging: latest report label, full date/time, and clearly identified fields. */
 .tk .resultbox .tk-latest-report{gap:5px}
 .tk .resultbox .tk-latest-label{font-weight:600;color:var(--muted)}
-.tk .resultbox .tk-latest-date{display:flex;flex-wrap:wrap;column-gap:6px;row-gap:2px;white-space:normal;overflow:visible;text-overflow:clip;font-size:11px;font-variant-numeric:tabular-nums}
+.tk .resultbox .tk-latest-report small.tk-latest-date{display:flex;flex-wrap:wrap;column-gap:8px;row-gap:2px;white-space:normal;overflow:visible;text-overflow:clip;font-size:11px;font-variant-numeric:tabular-nums}
 .tk .resultbox .tk-latest-date span{white-space:nowrap}
 .tk .resultbox .tk-latest-field{display:grid;grid-template-columns:28px minmax(0,1fr);column-gap:5px;align-items:start;min-width:0}
 .tk .resultbox .tk-latest-field-label{color:var(--muted);white-space:nowrap}
