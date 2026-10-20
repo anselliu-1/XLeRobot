@@ -7,8 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261020single2">
-<link rel="stylesheet" href="progress.css?v=20261019b">
+<link rel="stylesheet" href="style.css?v=20261020attachments1">
+<link rel="stylesheet" href="progress.css?v=20261020attachments1">
 </head>
 <body>
 <a class="skip" href="#main">跳至主要內容</a>
@@ -60,8 +60,8 @@
       <label>主題（必填）<input name="subject" required maxlength="200"></label></div>
       <label>關聯工作項目（選填）<select name="task_id" id="prTask"><option value="">不關聯工作項目</option></select></label>
       <label>回報內容（必填）<textarea name="content" required rows="5" maxlength="10000" placeholder="這次做了什麼、測試結果、遇到的問題與下一步…（上限 10,000 字）"></textarea></label>
-      <label>上傳附件（選填）<input name="files" type="file" multiple></label><p class="muted pr-upload-hint">每次回報最多可上傳 <strong>20 個檔案</strong>，所有附件的<strong>總大小不得超過 50 MB</strong>。</p>
-      <p class="muted">支援程式、壓縮檔、圖片、影片與文件；附件只供下載。時間由伺服器記錄。送出後不可修改，請確認內容。接續回報不會複製舊附件。</p>
+      <label>加入附件（可分次選取）<input name="files" type="file" multiple></label><p class="muted pr-upload-hint">可分次加入；送出前可移除清單中的檔案。最多 <strong>20 個檔案</strong>，合計<strong>不得超過 50 MB</strong>。</p><ul id="prUploadList" class="pr-upload-list" aria-label="待送附件清單"></ul>
+      <p class="muted">支援程式、壓縮檔、圖片、影片與文件；支援的格式可預覽，其他檔案可下載。時間由伺服器記錄。送出後不可修改，請確認內容。接續回報不會複製舊附件。</p>
       <div class="pr-actions"><button class="btn" type="submit">確認送出回報</button><button class="btn ghost" id="prCancel" type="button">取消</button><span id="prUploadSize" class="muted"></span></div>
       <p id="prMessage" role="status" aria-live="polite"></p>
     </form>
@@ -156,7 +156,7 @@
 <details class="admin-group"><summary>系統與管理員</summary><div class="admin-group-body"><div class="hw"><header><h3>管理員登入狀態</h3></header><p>管理者模式已啟用。可在「分工 & 時程」登出。</p><button class="btn ghost" id="adminSettingsLogout">管理員登出</button></div>
     <div class="hw"><header><h3>系統資訊</h3></header><p>測試站：XLeRobot-Staging・v1.4.0 測試版</p></div>
     </div></details>
-<details class="admin-group"><summary>進度回報</summary><div class="admin-group-body"><div class="hw"><header><h3>進度回報顯示設定</h3></header><label><input type="checkbox" id="progressShowIds"> 向一般組員顯示回報編號</label><p class="muted">預設關閉；管理員始終可查看編號。設定適用所有組員。</p><p id="progressShowIdsMsg" class="muted" role="status"></p></div>
+<details class="admin-group"><summary>進度回報</summary><div class="admin-group-body"><div class="hw"><header><h3>進度回報顯示設定</h3></header><label><input type="checkbox" id="progressShowIds"> 向一般組員顯示回報編號</label><p class="muted">預設關閉；此開關僅適用一般組員。管理員顯示可另外設定。</p><label><input type="checkbox" id="progressAdminShowIds" checked> 管理員畫面顯示回報編號</label><p class="muted">預設開啟；關閉後管理員列表及送出提示不顯示編號，不影響資料與權限。</p><p id="progressAdminShowIdsMsg" role="status"></p><p id="progressShowIdsMsg" class="muted" role="status"></p></div>
     <div class="hw"><header><h3>進度回報匯出權限</h3></header><label>允許匯出的對象<select id="prExportPermission"><option value="admin">僅管理員可匯出（預設）</option><option value="all">所有人皆可匯出</option></select></label><p class="muted">適用 PDF 與 ZIP、所有匯出範圍。權限由伺服器驗證。</p><p id="prExportPermissionMsg" class="muted" role="status"></p></div><div class="hw"><header><h3>進度回報操作紀錄顯示權限</h3></header><label><input type="checkbox" id="prAuditPermission"> 允許一般組員查看進度回報操作紀錄</label><p class="muted">預設關閉；管理員始終可以查看。僅開放查看，不會開放修改或刪除。</p><p id="prAuditPermissionMsg" class="muted" role="status"></p></div></div></details>
 <details class="admin-group"><summary>分工＆時程</summary><div class="admin-group-body"><div class="hw"><header><h3>分工時程完成權限</h3></header><label><input type="checkbox" id="allowMemberCompletion"> 允許一般組員勾選工作完成</label><p class="muted">預設關閉。關閉時僅管理員可操作；切換不會改變既有完成狀態。</p><p id="memberCompletionMsg" class="muted" role="status"></p></div>
     <div class="hw"><header><h3>完成狀態操作紀錄</h3></header><button class="btn ghost" id="taskAuditRefresh" type="button">查看最近 300 筆操作紀錄</button><div id="taskAuditList" class="muted"></div></div>
@@ -165,6 +165,10 @@
       <p>一鍵下載 ZIP：包含進度回報、分工時程、採購清單、風險與設定、操作紀錄，以及目前仍保留的附件、商品圖片和報銷憑證。</p>
       <p class="muted">也包含資料庫快照、可讀取的 JSON、檔案核對清單與網站程式。已永久移除的檔案無法備份；雲端憑證與管理員金鑰不包含在內。打包期間請保留此頁，完成後請將 ZIP 儲存到電腦。</p>
       <button class="btn" id="fullBackupDownload">一鍵備份全部資料與檔案（ZIP）</button><p id="lastBackupTime" class="muted">上次成功備份時間：載入中…</p><p id="fullBackupMsg" class="muted" role="status"></p>
+      <hr><h3>整站資料還原（僅測試環境）</h3><p class="muted">上傳本網站完整備份 ZIP，先核對資料庫與全部附件，再另外確認還原。上限 512 MB；解壓合計上限 2 GB。僅支援與目前資料表版本相容的備份；不執行 ZIP 中的網站程式，也不覆寫金鑰或環境變數。</p>
+      <label>選擇備份 ZIP<input id="restoreBackupFile" type="file" accept=".zip,application/zip"></label><div class="bar"><button class="btn" id="restoreBackupCheck" type="button">上傳並檢查預覽</button><button class="btn ghost" id="restoreBackupCancel" type="button" hidden>取消預覽</button></div>
+      <div id="restoreBackupPreview" class="restore-preview"></div><p id="restoreBackupMsg" class="muted" role="status"></p><button class="btn" id="restoreBackupApply" type="button" hidden>確認整站還原…</button><button class="btn ghost" id="restoreSafetyDownload" type="button" hidden>下載還原前安全副本</button>
+      <p class="muted">實際還原前會保留目前資料的安全副本；完成後通知將關閉，舊待送通知及檔案清理作業不會重送或重做。還原不會永久刪除目前的雲端檔案。預覽後資料有變更時，需重新檢查。</p>
     </div>
     </div></details>
 <details class="admin-group"><summary>報銷與通知</summary><div class="admin-group-body"><details class="legacy" id="purchasePermissionsPanel"><summary>管理員｜報銷權限設定</summary><div class="legacy-body">
@@ -472,12 +476,12 @@
 <script src="data.js?v=20261007a"></script>
 <script src="app.js?v=20261019g"></script>
 <script src="nav-scroll.js?v=20261019nav1"></script>
-<script src="tasks.js?v=20261020single2"></script>
+<script src="tasks.js?v=20261020attachments1"></script>
 <script src="admin-files.js?v=20261019fix1"></script>
 <script src="purchases.js?v=20261020approved1"></script>
-<script src="admin-pages.js?v=20261019fix1"></script>
+<script src="admin-pages.js?v=20261020attachments1"></script>
 <script src="risks-admin.js?v=20261012a"></script>
-<script src="progress.js?v=20261020single2"></script>
+<script src="progress.js?v=20261020attachments1"></script>
 <script>
 async function loadSiteInfo() {
   try {
@@ -845,6 +849,9 @@ loadSiteInfo();
 
 </script></body>
 </html>
+
+
+
 
 
 

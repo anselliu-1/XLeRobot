@@ -30,6 +30,7 @@
       const d=await r.json();
       const time=d.last_backup_at?new Intl.DateTimeFormat('zh-TW',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date(d.last_backup_at))+'（台灣時間）':'尚無成功備份紀錄';
       const text='上次成功備份時間：'+time;
+      restoreSafety=d.last_restore_safety_id||'';$('#restoreSafetyDownload').hidden=!restoreSafety;
       if($('#lastBackupTime').textContent!==text)$('#lastBackupTime').textContent=text;
     }catch{$('#lastBackupTime').textContent='上次成功備份時間：暫時無法讀取';}
     finally{backupStatusBusy=false;}
@@ -74,7 +75,7 @@
       $('#overviewProgressLabel').textContent=done+' / '+count+' 項工作主題已完成（'+rate+'%）';
       const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
       const dueValue=t=>String(t.due||t.deadline||'').slice(0,10);
-      const orderedTasks=[...tasks].sort((a,b)=>{const rank=t=>t.done?2:(/^\d{4}-\d{2}-\d{2}$/.test(dueValue(t))&&dueValue(t)<today?0:1);return rank(a)-rank(b);});
+      const orderedTasks=[...tasks].sort((a,b)=>window.xleTaskCompare?window.xleTaskCompare(a,b):a.n-b.n);
       topics.innerHTML=orderedTasks.length?orderedTasks.map(t=>{
         const due=dueValue(t),late=!t.done&&/^\d{4}-\d{2}-\d{2}$/.test(due)&&due<today;
         const status=t.done?'已完成':late?'已逾期':'進行中';
@@ -84,6 +85,7 @@
     }catch(e){stats.textContent='進度載入失敗：'+e.message;topics.textContent='請稍後重新整理。';}
   }
   document.querySelectorAll('[data-view="overview"]').forEach(b=>b.addEventListener('click',loadOverview));
+  window.addEventListener('xle-task-order-change',loadOverview);
   loadOverview();
   $('#fileItems').addEventListener('toggle',e=>{const d=e.target.closest('details[data-file-group]');if(!d)return;if(d.open)openFileGroups.add(d.dataset.fileGroup);else openFileGroups.delete(d.dataset.fileGroup);},true);
   $('#fileItems').addEventListener('change',e=>{
@@ -144,7 +146,52 @@
   window.addEventListener('xle-admin-change',auth);
   window.addEventListener('storage',e=>{if(e.key==='xle-admin')auth();});
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)auth();});
+  let restoreToken='',restoreSafety='';
+  const restoreMsg=$('#restoreBackupMsg'),restoreCheck=$('#restoreBackupCheck'),restoreApply=$('#restoreBackupApply'),restoreCancel=$('#restoreBackupCancel');
+  async function restoreRequest(path,body,raw=false){
+    const response=await fetch('/api/admin/restore/'+path,{method:'POST',headers:{...headers(),...(raw?{'Content-Type':'application/zip'}:{'Content-Type':'application/json'})},body:raw?body:JSON.stringify(body)});
+    const data=await response.json();if(!response.ok)throw Error(data.error||'還原失敗');return data;
+  }
+  restoreCheck.onclick=async()=>{
+    if(!admin)return;
+    const file=$('#restoreBackupFile').files[0];if(!file){restoreMsg.textContent='請先選擇 XLeRobot 完整備份 ZIP';return;}
+    if(file.size>512*1024*1024){restoreMsg.textContent='備份 ZIP 上限為 512 MB';return;}
+    restoreCheck.disabled=true;restoreApply.hidden=true;restoreMsg.textContent='上傳並檢查資料庫、附件與 SHA-256，尚未還原…';
+    try{
+      if(restoreToken)await restoreRequest('cancel',{token:restoreToken});restoreToken='';
+      const d=await restoreRequest('preview',file,true);restoreToken=d.token;
+      const labels={tasks:'分工工作',progress_reports:'進度回報',purchases:'採購項目',progress_files:'回報附件紀錄',project_risks:'困難與展出'};
+      $('#restoreBackupPreview').innerHTML='<p>備份時間：'+esc(d.created)+' · 版本：'+esc(d.version||'未標示')+'</p><table><thead><tr><th>資料</th><th>目前</th><th>備份</th></tr></thead><tbody>'+Object.entries(labels).map(([k,label])=>'<tr><td>'+label+'</td><td>'+(d.current_tables[k]||0)+'</td><td>'+(d.tables[k]||0)+'</td></tr>').join('')+'</tbody></table><p>已核對 '+d.files+' 個附件 · '+(d.bytes/1024/1024).toFixed(2)+' MB</p><p>'+esc(d.warning)+'</p>';
+      restoreApply.hidden=false;restoreCancel.hidden=false;restoreMsg.textContent='檢查通過；尚未還原。預覽 20 分鐘內有效。還原會覆蓋目前資料，請與其他使用者確認停止編輯。';
+    }catch(e){restoreMsg.textContent=e.message;}
+    finally{restoreCheck.disabled=false;}
+  };
+  restoreCancel.onclick=async()=>{
+    if(!restoreToken)return;
+    try{await restoreRequest('cancel',{token:restoreToken});restoreToken='';restoreApply.hidden=true;restoreCancel.hidden=true;$('#restoreBackupPreview').replaceChildren();restoreMsg.textContent='已取消，線上資料未變更。';}
+    catch(e){restoreMsg.textContent=e.message;}
+  };
+  restoreApply.onclick=async()=>{
+    if(!admin||!restoreToken)return;
+    const reason=await xleDialog({title:'整站還原測試資料',message:'會以已檢查的備份覆蓋目前資料及附件關聯；網站程式和登入金鑰維持現況。還原前會保留目前資料的安全副本。請填寫原因。',kind:'reason',requireReason:true,danger:true,label:'下一步'});
+    if(reason===null)return;
+    const typed=await xleDialog({title:'最後確認',message:'請輸入「還原測試站」。確認後會覆蓋測試站資料，並停用 Discord 通知。',kind:'reason',requireReason:true,danger:true,ack:true,label:'確認整站還原'});
+    if(typed!=='還原測試站'){restoreMsg.textContent='未確認還原，資料未變更。';return;}
+    restoreApply.disabled=true;restoreCheck.disabled=true;restoreCancel.disabled=true;restoreMsg.textContent='正在建立安全副本並還原，請勿關閉或重複操作…';
+    try{const d=await restoreRequest('apply',{token:restoreToken,confirm:typed,reason});restoreSafety=d.safety_id;restoreToken='';restoreApply.hidden=true;restoreCancel.hidden=true;$('#restoreSafetyDownload').hidden=false;restoreMsg.textContent=d.message;}
+    catch(e){restoreMsg.textContent=e.message;}
+    finally{restoreApply.disabled=false;restoreCheck.disabled=false;restoreCancel.disabled=false;}
+  };
+  $('#restoreSafetyDownload').onclick=async()=>{
+    if(!admin||!restoreSafety)return;
+    try{const r=await fetch('/api/admin/restore/safety/'+restoreSafety,{headers:headers(),cache:'no-store'});if(!r.ok)throw Error('無法下載安全副本');const url=URL.createObjectURL(await r.blob()),a=document.createElement('a');a.href=url;a.download='XLeRobot-before-restore.zip';a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);}
+    catch(e){restoreMsg.textContent=e.message;}
+  };
+
   auth();
   setInterval(()=>{if(!document.hidden)auth();},30000);
 })();
+
+
+
 

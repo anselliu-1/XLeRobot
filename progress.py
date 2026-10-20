@@ -184,9 +184,23 @@ def list_reports(h):
         # Include full histories for matching topics, even if earlier versions do not match.
         roots={r['root_id'] for r in reports if r['id'] in matched}
         items=[r for r in reports if r['root_id'] in roots]
-        return h._send(200,{'items':items,'matched_ids':matched,'reporters':people,'admin':A.is_admin(h),'show_report_ids':(c.execute("SELECT v FROM meta WHERE k='progress_show_ids'").fetchone() or {'v':'0'})['v']=='1','export_all':(c.execute("SELECT v FROM meta WHERE k='progress_export_all'").fetchone() or {'v':'0'})['v']=='1','audit_all':(c.execute("SELECT v FROM meta WHERE k='progress_audit_all'").fetchone() or {'v':'0'})['v']=='1','trash_count':trash_count})
+        return h._send(200,{'items':items,'matched_ids':matched,'reporters':people,'admin':A.is_admin(h),'admin_show_report_ids':(c.execute("SELECT v FROM meta WHERE k='progress_admin_show_ids'").fetchone() or {'v':'1'})['v']=='1' if A.is_admin(h) else False,'show_report_ids':(c.execute("SELECT v FROM meta WHERE k='progress_show_ids'").fetchone() or {'v':'0'})['v']=='1','export_all':(c.execute("SELECT v FROM meta WHERE k='progress_export_all'").fetchone() or {'v':'0'})['v']=='1','audit_all':(c.execute("SELECT v FROM meta WHERE k='progress_audit_all'").fetchone() or {'v':'0'})['v']=='1','trash_count':trash_count})
 
-def download(h,fid):
+def preview_kind(name,data):
+    ext=os.path.splitext(name)[1].lower()
+    if ext=='.png' and data.startswith(b'\x89PNG\r\n\x1a\n'):return 'image/png'
+    if ext in ('.jpg','.jpeg') and data.startswith(b'\xff\xd8\xff'):return 'image/jpeg'
+    if ext=='.gif' and data[:6] in (b'GIF87a',b'GIF89a'):return 'image/gif'
+    if ext=='.webp' and data[:4]==b'RIFF' and data[8:12]==b'WEBP':return 'image/webp'
+    if ext=='.pdf' and data.startswith(b'%PDF-'):return 'application/pdf'
+    if ext in ('.mp4','.m4v') and data[4:8]==b'ftyp':return 'video/mp4'
+    if ext=='.webm' and data.startswith(b'\x1a\x45\xdf\xa3'):return 'video/webm'
+    if ext in ('.txt','.csv','.json','.log','.md','.py','.js','.ts','.c','.cpp','.h','.css','.yaml','.yml','.ini','.xml') and len(data)<=1024*1024 and b'\x00' not in data:
+        try:data.decode('utf-8-sig');return 'text/plain; charset=utf-8'
+        except UnicodeDecodeError:pass
+    return None
+
+def download(h,fid,preview=False):
     with A.LOCK, A.conn() as c:
         f=c.execute('SELECT * FROM progress_files WHERE id=?',(fid,)).fetchone()
     if not f or f['removed_at']: return h._send(404,{'error':'附件不存在或已移除'})
@@ -196,13 +210,26 @@ def download(h,fid):
     if f['storage']=='bucket': data,_=A.s3_request('GET',f['object_key'])
     else:
         with open(os.path.join(A.UPLOAD_DIR, f['object_key']), 'rb') as stream: data=stream.read()
-    h.send_response(200)
-    h.send_header('Content-Type','application/octet-stream')
+    kind=preview_kind(f['name'],data) if preview else None
+    if preview and not kind:return h._send(415,{'error':'此附件不支援安全預覽，請下載檢視（純文字預覽上限 1 MB）。'})
+    total=len(data);start=0;end=total-1;status=200
+    if preview and h.headers.get('Range'):
+        match=re.fullmatch(r'bytes=([0-9]*)-([0-9]*)',h.headers['Range'])
+        if not match or not any(match.groups()):return h._send(416,{'error':'無效範圍'})
+        a,b=match.groups()
+        start=int(a) if a else max(0,total-int(b));end=min(int(b),total-1) if a and b else total-1
+        if start>=total or start>end:return h._send(416,{'error':'無效範圍'})
+        status=206
+    h.send_response(status)
+    h.send_header('Content-Type',kind or 'application/octet-stream')
     h.send_header('X-Content-Type-Options','nosniff')
-    h.send_header('Content-Security-Policy',"sandbox; default-src 'none'")
-    h.send_header('Content-Disposition',"attachment; filename=download; filename*=UTF-8''"+urllib.parse.quote(f['name'],safe=''))
+    h.send_header('Content-Security-Policy',"default-src 'none'; script-src 'none'; object-src 'none'; frame-ancestors 'self'; base-uri 'none'" if kind=='application/pdf' else "sandbox; default-src 'none'")
+    h.send_header('Content-Disposition',('inline' if preview else 'attachment')+"; filename=download; filename*=UTF-8''"+urllib.parse.quote(f['name'],safe=''))
+    h.send_header('Cross-Origin-Resource-Policy','same-origin')
+    if preview:h.send_header('Accept-Ranges','bytes')
+    if status==206:h.send_header('Content-Range',f'bytes {start}-{end}/{total}')
     h.send_header('Cache-Control','no-store')
-    h.send_header('Content-Length',str(len(data))); h.end_headers(); h.wfile.write(data)
+    h.send_header('Content-Length',str(end-start+1)); h.end_headers(); h.wfile.write(data[start:end+1])
 
 def create(h):
     if not UPLOADS.acquire(blocking=False): return h._send(429,{'error':'目前上傳忙碌，請稍後再試'})
@@ -404,8 +431,9 @@ def route(h,method):
             if not A.is_admin(h): h._send(403,{'error':'需要管理員'})
             else:
                 d=h._body()
-                if not isinstance(d,dict) or not d or any(k not in ('show_report_ids','export_all','audit_all') or type(v) is not bool for k,v in d.items()):raise ValueError('設定格式錯誤')
+                if not isinstance(d,dict) or not d or any(k not in ('show_report_ids','admin_show_report_ids','export_all','audit_all') or type(v) is not bool for k,v in d.items()):raise ValueError('設定格式錯誤')
                 with A.LOCK,A.conn() as c:
+                    if 'admin_show_report_ids' in d:c.execute("INSERT OR REPLACE INTO meta(k,v) VALUES('progress_admin_show_ids',?)",('1' if d['admin_show_report_ids'] else '0',))
                     if 'show_report_ids' in d:c.execute("INSERT OR REPLACE INTO meta(k,v) VALUES('progress_show_ids',?)",('1' if d['show_report_ids'] else '0',))
                     if 'export_all' in d:c.execute("INSERT OR REPLACE INTO meta(k,v) VALUES('progress_export_all',?)",('1' if d['export_all'] else '0',))
                     if 'audit_all' in d:c.execute("INSERT OR REPLACE INTO meta(k,v) VALUES('progress_audit_all',?)",('1' if d['audit_all'] else '0',))
@@ -413,6 +441,7 @@ def route(h,method):
         elif method=='GET' and p=='/api/progress/trash':trash_list(h)
         elif method=='POST' and re.fullmatch(r'/api/progress/[1-9][0-9]*/delete',p):permanently_delete(h,int(p.split('/')[3]))
         elif method=='GET' and p=='/api/progress': list_reports(h)
+        elif method=='GET' and re.fullmatch('/api/progress-files/[a-f0-9]{32}/preview',p): download(h,p.split('/')[3],True)
         elif method=='GET' and re.fullmatch('/api/progress-files/[a-f0-9]{32}',p): download(h,p.rsplit('/',1)[1])
         elif method=='POST' and p=='/api/progress': create(h)
         elif method=='POST' and re.fullmatch(r'/api/progress/[1-9][0-9]*/(void|restore|remove-file|trash|untrash)',p):
@@ -435,5 +464,7 @@ def route(h,method):
         print('progress request failed:',type(exc).__name__,flush=True)
         h.close_connection=True; h._send(503,{'error':'儲存服務暫時無法使用，請重新整理確認後再試'})
     return True
+
+
 
 
