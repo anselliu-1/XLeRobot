@@ -97,37 +97,49 @@ def apply_restore(A,session,ident):
     safety=safety_root/(ident+'.zip')
     with tempfile.TemporaryDirectory(prefix='before-restore-') as folder:
         archive,_=backup.build(folder);shutil.copy2(archive,safety)
-    with closing(sqlite3.connect(staged)) as c,zipfile.ZipFile(session['archive']) as z:
-        for f in session['manifest']['files']:
-            name='restore-'+ident+'-'+uuid.uuid4().hex+Path(f['name']).suffix[:12]
-            key=('progress/restored/' if f['table']=='progress_files' else {'attachments':'uploads/','purchase_images':'purchases/','purchase_receipts':'receipts/'}[f['table']])+name
-            data=z.read(f['archive_path'])
-            if A.S3_ENABLED:A.s3_request('PUT',key,data)
-            else:
-                destination=Path(A.UPLOAD_DIR)/(key if f['table']=='progress_files' else name)
-                destination.parent.mkdir(parents=True,exist_ok=True);destination.write_bytes(data)
-            storage='bucket' if A.S3_ENABLED else 'local'
-            if f['table']=='progress_files':c.execute('UPDATE progress_files SET object_key=?,storage=? WHERE id=?',(key,storage,f['id']))
-            else:c.execute('UPDATE "'+f['table']+'" SET stored_name=?,storage=? WHERE id=?',(name,storage,f['id']))
-        c.commit()
-    with A.LOCK,A.conn() as c:
-        c.execute('BEGIN IMMEDIATE')
-        if fingerprint(c)!=session['base']:raise ValueError('預覽後資料已變更，未套用還原；請重新上傳檢查')
-        old_rev=A.rev(c)
-        c.execute('PRAGMA trusted_schema=OFF')
-        c.execute('ATTACH DATABASE ? AS restored',(str(staged),))
-        for table,columns in session['schema'].items():
-            names=','.join('"'+name+'"' for name in columns)
-            c.execute('DELETE FROM main."'+table+'"')
-            c.execute('INSERT INTO main."'+table+'"('+names+') SELECT '+names+' FROM restored."'+table+'"')
-        cfg=A.notify_config(c);cfg['enabled']=False
-        c.execute("INSERT OR REPLACE INTO meta(k,v) VALUES('notify_config',?)",(json.dumps(cfg),))
-        c.execute("UPDATE notify_queue SET sent=1,error='整站還原：略過舊待送通知' WHERE sent=0")
-        c.execute("UPDATE progress_outbox SET sent_at=?,error='整站還原：略過舊待送通知' WHERE sent_at=''",(A.progress.stamp(),))
-        for table in ('purchase_cleanup','progress_cleanup'):
-            c.execute('UPDATE '+table+" SET completed=?,error='整站還原：暫停舊清理意圖，保留現有物件' WHERE completed=''",(A.progress.stamp(),))
-        c.execute("UPDATE meta SET v=? WHERE k='rev'",(str(max(old_rev,A.rev(c))+1),))
-        c.execute('INSERT OR REPLACE INTO admin_restore_audit VALUES(?,?,?,?)',(ident,A.progress.stamp(),'restored','管理員確認還原；安全副本 '+safety.name))
+    uploaded=[]
+    try:
+        with closing(sqlite3.connect(staged)) as c,zipfile.ZipFile(session['archive']) as z:
+            for f in session['manifest']['files']:
+                name='restore-'+ident+'-'+uuid.uuid4().hex+Path(f['name']).suffix[:12]
+                key=('progress/restored/' if f['table']=='progress_files' else {'attachments':'uploads/','purchase_images':'purchases/','purchase_receipts':'receipts/'}[f['table']])+name
+                data=z.read(f['archive_path'])
+                if A.S3_ENABLED:A.s3_request('PUT',key,data)
+                else:
+                    destination=Path(A.UPLOAD_DIR)/(key if f['table']=='progress_files' else name)
+                    destination.parent.mkdir(parents=True,exist_ok=True);destination.write_bytes(data)
+                uploaded.append((key,None if A.S3_ENABLED else destination))
+                storage='bucket' if A.S3_ENABLED else 'local'
+                if f['table']=='progress_files':c.execute('UPDATE progress_files SET object_key=?,storage=? WHERE id=?',(key,storage,f['id']))
+                else:c.execute('UPDATE "'+f['table']+'" SET stored_name=?,storage=? WHERE id=?',(name,storage,f['id']))
+            c.commit()
+        with A.LOCK,A.conn() as c:
+            c.execute('BEGIN IMMEDIATE')
+            if fingerprint(c)!=session['base']:raise ValueError('預覽後資料已變更，未套用還原；請重新上傳檢查')
+            old_rev=A.rev(c)
+            c.execute('PRAGMA trusted_schema=OFF')
+            c.execute('ATTACH DATABASE ? AS restored',(str(staged),))
+            for table,columns in session['schema'].items():
+                names=','.join('"'+name+'"' for name in columns)
+                c.execute('DELETE FROM main."'+table+'"')
+                c.execute('INSERT INTO main."'+table+'"('+names+') SELECT '+names+' FROM restored."'+table+'"')
+            cfg=A.notify_config(c);cfg['enabled']=False
+            c.execute("INSERT OR REPLACE INTO meta(k,v) VALUES('notify_config',?)",(json.dumps(cfg),))
+            c.execute("UPDATE notify_queue SET sent=1,error='整站還原：略過舊待送通知' WHERE sent=0")
+            c.execute("UPDATE progress_outbox SET sent_at=?,error='整站還原：略過舊待送通知' WHERE sent_at=''",(A.progress.stamp(),))
+            for table in ('purchase_cleanup','progress_cleanup'):
+                c.execute('UPDATE '+table+" SET completed=?,error='整站還原：暫停舊清理意圖，保留現有物件' WHERE completed=''",(A.progress.stamp(),))
+            c.execute("UPDATE meta SET v=? WHERE k='rev'",(str(max(old_rev,A.rev(c))+1),))
+            c.execute('INSERT OR REPLACE INTO admin_restore_audit VALUES(?,?,?,?)',(ident,A.progress.stamp(),'restored','管理員確認還原；安全副本 '+safety.name))
+    except Exception:
+        # Restore writes use fresh keys; delete only those staged in this attempt.
+        for key,local_path in reversed(uploaded):
+            try:
+                if A.S3_ENABLED:A.s3_request('DELETE',key)
+                elif local_path is not None:local_path.unlink(missing_ok=True)
+            except Exception as exc:
+                print('restore orphan cleanup failed:',type(exc).__name__,flush=True)
+        raise
     return safety
 
 def route(A,h,method):
