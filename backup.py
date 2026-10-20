@@ -19,6 +19,8 @@ def inventory(c):
     for table,prefix in [('attachments','uploads'),('purchase_images','purchases'),('purchase_receipts','receipts')]:
         for row in c.execute('SELECT * FROM '+table):
             r=dict(row)
+            if table!='attachments' and c.execute('SELECT 1 FROM purchase_cleanup WHERE file_table=? AND file_id=?',(table,r['id'])).fetchone():
+                removed.append({'table':table,'id':r['id'],'name':r['original_name'],'reason':'管理員已要求永久移除，清理中或已完成'});continue
             files.append({'table':table,'id':r['id'],'name':r['original_name'],'size':r['size'],
                           'storage':r.get('storage') or 'local','local_key':r['stored_name'],
                           'object_key':prefix+'/'+r['stored_name']})
@@ -90,7 +92,8 @@ def build(folder):
                 'database/data.sqlite3：SQLite 一致性快照。data/：各資料表 JSON。\n'
                 'files/：分工附件、採購圖片、報銷憑證、進度回報附件。\n'
                 'application/：此部署的程式與固定網站內容。manifest.json：原始儲存位置、檔案大小及 SHA-256。\n'
-                '已永久移除的附件不包含檔案內容，原有操作紀錄仍在資料庫。\n'
+                '已永久移除、或管理員已要求永久移除而正在清理的附件不包含檔案內容，操作及清理紀錄仍在資料庫。\n'
+                '還原前請檢查 purchase_cleanup 與 purchase_delete_audit 中的刪除意圖，避免把清理中的檔案誤認為可還原。\n'
                 '還原需先停站、備份當前資料，再以快照及 manifest 對照還原附件；本功能不會自動覆寫線上資料。\n'
                 '還原後先停用 Discord 通知並檢查待送佇列，避免重複補送。\n'
                 '不包含管理員金鑰、S3 憑證、Discord webhook 或其他 Railway 環境變數；這些需另行安全保存。\n'
@@ -138,3 +141,4 @@ def route(h,method='POST'):
         else: h.close_connection=True
     finally: BUSY.release()
     return True
+

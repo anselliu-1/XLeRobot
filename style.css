@@ -680,3 +680,32 @@ body.tk-admin .tk{grid-template-columns:84px 1.8fr minmax(168px,1.1fr) 122px 50p
 .tk .resultbox .tk-latest-field-label{color:var(--muted);white-space:nowrap}
 .tk .resultbox .tk-latest-subject{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tk .resultbox .tk-latest-content{overflow-wrap:anywhere}
+
++
++/* Approved staging polish: stable controls, readable feedback and dark date pickers. */
++:root{color-scheme:light}
++[data-theme=dark]{color-scheme:dark}
++.who-control{display:block;position:relative;min-width:0;width:100%}
++.who-control input{width:100%;box-sizing:border-box;min-height:32px;padding-right:30px!important;line-height:1.4}
++.who-control input::-webkit-calendar-picker-indicator{opacity:0}
++.who-picker{position:absolute;right:2px;top:50%;transform:translateY(-50%);display:flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border:0;border-radius:5px;background:transparent;color:var(--muted);cursor:pointer}
++.who-picker svg{display:block;flex:none}
++.who-picker:hover,.who-picker:focus-visible{color:var(--ink);background:var(--surface)}
++#tkTable .whos{gap:6px}
++#tkTable .whos .who-control{flex:none}
++#tkTable .whos .in{min-height:32px}
++.task-save-feedback{max-width:100%;font-size:11px;line-height:1.4;overflow-wrap:anywhere;color:var(--muted)}
++.task-save-state:empty{display:none}
++#tkTable .task-retry{padding:3px 5px;font-size:11px;min-height:28px}
++#tkTable .del{width:28px;min-height:32px;display:flex;align-items:center;justify-content:center;border-radius:6px}
++#tkTable .del:hover{color:var(--c);background:var(--c-bg)}
++.field-hint{display:block;font-size:11px;font-weight:400;color:var(--muted);line-height:1.4;margin-top:3px}
++.btn{min-height:34px;vertical-align:middle}
++.buy-conflict{grid-column:1/-1;border:1px solid var(--b);background:var(--surface);border-radius:8px;padding:14px;max-width:100%;overflow:auto}
++.buy-conflict[hidden]{display:none}
++.buy-conflict table{width:100%;border-collapse:collapse;table-layout:fixed;margin:10px 0}
++.buy-conflict th,.buy-conflict td{border:1px solid var(--line);padding:8px;text-align:left;white-space:pre-wrap;overflow-wrap:anywhere}
++#buyCleanup{margin-top:18px}
++#buyCleanup p{overflow-wrap:anywhere}
++
+

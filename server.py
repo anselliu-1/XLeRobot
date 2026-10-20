@@ -3,8 +3,9 @@ import json, os, sqlite3, threading, time, uuid, re, mimetypes, urllib.request, 
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from datetime import datetime, timezone, timedelta
 import hashlib, hmac
-import progress, backup, sys
+import progress, backup, purchase_safety, sys
 progress.install(sys.modules[__name__])
+purchase_safety.install(sys.modules[__name__])
 
 DB = os.environ.get("TASK_DB", os.path.join(os.path.dirname(os.path.abspath(__file__)), "data.db"))
 PORT = int(os.environ.get("PORT", "8000"))
@@ -102,6 +103,7 @@ def init():
             id TEXT PRIMARY KEY, n INTEGER, task TEXT NOT NULL, who TEXT DEFAULT '', due TEXT DEFAULT '',
             done_date TEXT DEFAULT '', pri TEXT DEFAULT '中', note TEXT DEFAULT '', done INTEGER DEFAULT 0, updated REAL)""")
         c.execute("CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT)")
+        c.execute("CREATE TABLE IF NOT EXISTS task_time_audit(id INTEGER PRIMARY KEY AUTOINCREMENT,task_id TEXT,actor TEXT,before_time TEXT,after_time TEXT,changed_at TEXT)")
         c.execute("""CREATE TABLE IF NOT EXISTS task_status_audit(
           id INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL, task_name TEXT NOT NULL,
           before_done INTEGER NOT NULL, after_done INTEGER NOT NULL, actor TEXT NOT NULL,
@@ -144,6 +146,7 @@ def init():
           id TEXT PRIMARY KEY, purchase_id TEXT NOT NULL, original_name TEXT NOT NULL,
           stored_name TEXT NOT NULL, mime TEXT NOT NULL, size INTEGER NOT NULL,
           storage TEXT NOT NULL, created TEXT NOT NULL)""")
+        purchase_safety.init(c)
         if c.execute("SELECT v FROM meta WHERE k='purchase_permissions'").fetchone() is None:
             c.execute("INSERT INTO meta(k,v) VALUES('purchase_permissions',?)", (json.dumps({'refund_view':False,'refund_edit':False}),))
         c.execute("""CREATE TABLE IF NOT EXISTS purchase_images(
@@ -208,6 +211,7 @@ def clean(d, partial=False):
             continue
         v = d[k]
         if k in ("done", "member_done"):
+            if type(v) not in (bool,int) or v not in (0,1):raise ValueError('完成狀態必須為布林值')
             o[k] = 1 if v else 0
         elif k == "due":
             v = str(v or "").strip()[:10]
@@ -376,13 +380,14 @@ def purchase_permissions(c):
 
 def purchase_rows(c, admin=False):
     result=[dict(r) for r in c.execute('SELECT * FROM purchases ORDER BY updated DESC')]
-    images=[dict(r) for r in c.execute('SELECT id,purchase_id,original_name,mime,size FROM purchase_images ORDER BY created')]
+    if not admin:result=[r for r in result if not r['deleting']]
+    images=[dict(r) for r in c.execute("SELECT id,purchase_id,original_name,mime,size FROM purchase_images WHERE NOT EXISTS(SELECT 1 FROM purchase_cleanup q WHERE q.file_table='purchase_images' AND q.file_id=purchase_images.id) ORDER BY created")]
     perms=purchase_permissions(c)
     for r in result:
         if not admin and not perms.get('refund_view'): r.pop('refund',None)
         r['images']=[dict(i, url='/api/purchase-images/'+i['id']) for i in images if i['purchase_id']==r['id']]
     if admin:
-        receipts=[dict(x) for x in c.execute('SELECT id,purchase_id,original_name,mime,size FROM purchase_receipts ORDER BY created')]
+        receipts=[dict(x) for x in c.execute("SELECT id,purchase_id,original_name,mime,size FROM purchase_receipts WHERE NOT EXISTS(SELECT 1 FROM purchase_cleanup q WHERE q.file_table='purchase_receipts' AND q.file_id=purchase_receipts.id) ORDER BY created")]
         for r in result:r['receipts']=[dict(x,url='/api/purchase-receipts/'+x['id']) for x in receipts if x['purchase_id']==r['id']]
     return result
 
@@ -400,8 +405,10 @@ def clean_purchase(d):
     if stock not in ('尚未確認','有','沒有'): raise ValueError('invalid stock')
     actual=float(d.get('actual_price') or 0)
     if not 0<=actual<=100000000: raise ValueError('invalid actual price')
-    return {'name':name,'spec':str(d.get('spec',''))[:1000],'qty':qty,'price':price,
-            'status':status,'url':url,'note':str(d.get('note',''))[:1000],
+    for field in ('spec','note'):
+        if len(str(d.get(field,'')))>10000:raise ValueError(('規格' if field=='spec' else '備註')+'最多 10,000 字')
+    return {'name':name,'spec':str(d.get('spec','')),'qty':qty,'price':price,
+            'status':status,'url':url,'note':str(d.get('note','')),
             'stock':stock,'actual_price':actual,'updated':now_s()}
 
 class H(BaseHTTPRequestHandler):
@@ -444,6 +451,7 @@ class H(BaseHTTPRequestHandler):
                 "deploy_time": DEPLOY_TIME_TEXT
             })
         
+        if p == '/api/purchases/cleanup-status':return purchase_safety.status(self)
         if p == "/api/auth": return self._send(200 if is_admin(self) else 403, {"admin": is_admin(self)})
         if p == '/api/project-risks':
             with LOCK,conn() as c:
@@ -455,11 +463,12 @@ class H(BaseHTTPRequestHandler):
                 for table,kind,parent in [('attachments','task','task_id'),('purchase_images','image','purchase_id'),('purchase_receipts','receipt','purchase_id')]:
                     for row in c.execute('SELECT * FROM '+table).fetchall():
                         d=dict(row)
+                        if kind!='task' and purchase_safety.queued(c,table,d['id']):continue
                         if kind=='task':
                             t=c.execute('SELECT task FROM tasks WHERE id=?',(d[parent],)).fetchone()
                             name=t['task'] if t else '(原任務已移除)'
                         else:
-                            t=c.execute('SELECT name FROM purchases WHERE id=?',(d[parent],)).fetchone()
+                            t=c.execute('SELECT name,deleting FROM purchases WHERE id=?',(d[parent],)).fetchone()
                             name=t['name'] if t else '(原商品已移除)'
                         result.append({'id':d['id'],'kind':kind,'original_name':d['original_name'],
                             'mime':d['mime'],'size':d['size'],'created':d['created'],
@@ -488,6 +497,8 @@ class H(BaseHTTPRequestHandler):
             with LOCK, conn() as c: return self._send(200,notify_config(c))
         mreceipt=re.fullmatch(r'/api/purchase-receipts/([a-f0-9]+)',p)
         if mreceipt:
+            with LOCK,conn() as c:
+                if purchase_safety.queued(c,'purchase_receipts',mreceipt.group(1)):return self._send(404,{'error':'附件正在移除'})
             if self._deny(): return
             with LOCK, conn() as c: a=c.execute('SELECT * FROM purchase_receipts WHERE id=?',(mreceipt.group(1),)).fetchone()
             if not a: return self._send(404,{'error':'not found'})
@@ -501,6 +512,8 @@ class H(BaseHTTPRequestHandler):
             self.send_header('X-Content-Type-Options','nosniff');self.send_header('Cache-Control','no-store');self.end_headers();self.wfile.write(b);return
         mimg=re.fullmatch(r'/api/purchase-images/([a-f0-9]+)',p)
         if mimg:
+            with LOCK,conn() as c:
+                if purchase_safety.queued(c,'purchase_images',mimg.group(1)):return self._send(404,{'error':'附件正在移除'})
             with LOCK, conn() as c:
                 a=c.execute('SELECT * FROM purchase_images WHERE id=?',(mimg.group(1),)).fetchone()
             if not a: return self._send(404,{'error':'not found'})
@@ -603,7 +616,9 @@ class H(BaseHTTPRequestHandler):
                         row=None;prefix=None
                         for table,folder in [('attachments','uploads'),('purchase_images','purchases'),('purchase_receipts','receipts')]:
                             row=c.execute('SELECT * FROM '+table+' WHERE id=?',(ident,)).fetchone()
-                            if row:prefix=folder;break
+                            if row:
+                                if table!='attachments' and purchase_safety.queued(c,table,row['id']):raise ValueError('附件正在移除')
+                                prefix=folder;break
                         if not row:
                             pf=c.execute("SELECT * FROM progress_files WHERE id=? AND removed_at=''",(ident,)).fetchone()
                             if pf:
@@ -680,8 +695,9 @@ class H(BaseHTTPRequestHandler):
             ext=os.path.splitext(name)[1].lower()
             if ext not in IMAGE_EXT|{'.pdf'}:return self._send(415,{'error':'只接受圖片或 PDF'})
             with LOCK, conn() as c:
-                item=c.execute('SELECT name FROM purchases WHERE id=?',(receipt.group(1),)).fetchone()
+                item=c.execute('SELECT name,deleting FROM purchases WHERE id=?',(receipt.group(1),)).fetchone()
                 if not item:return self._send(404,{'error':'item not found'})
+                if item['deleting']:return self._send(409,{'error':'此項目正在刪除'})
             b=self.rfile.read(n)
             signatures={'.jpg':b.startswith(b'\xff\xd8\xff'),'.jpeg':b.startswith(b'\xff\xd8\xff'),'.png':b.startswith(b'\x89PNG\r\n\x1a\n'),'.webp':b.startswith(b'RIFF') and b[8:12]==b'WEBP','.pdf':b.startswith(b'%PDF-')}
             if not signatures[ext]:return self._send(415,{'error':'檔案格式不符'})
@@ -695,7 +711,12 @@ class H(BaseHTTPRequestHandler):
                 print('receipt upload failed:',repr(e),flush=True)
                 return self._send(502,{'error':'storage unavailable'})
             with LOCK, conn() as c:
+                parent=c.execute('SELECT deleting FROM purchases WHERE id=?',(receipt.group(1),)).fetchone()
+                if not parent or parent['deleting']:
+                    purchase_safety.queue_file(c,'purchase_receipts',dict(id=aid,purchase_id=receipt.group(1),original_name=name,stored_name=stored,storage=storage))
+                    return self._send(409,{'error':'此項目已刪除或正在刪除，上傳檔案將自動清理'})
                 c.execute('INSERT INTO purchase_receipts VALUES(?,?,?,?,?,?,?,?)',(aid,receipt.group(1),name,stored,mime,n,storage,now_s()))
+                c.execute('UPDATE purchases SET revision=revision+1 WHERE id=?',(receipt.group(1),))
                 return self._send(200,{'purchases':purchase_rows(c,True)})
         im=re.fullmatch(r'/api/purchases/([a-f0-9]+)/images',p)
         if im:
@@ -706,8 +727,9 @@ class H(BaseHTTPRequestHandler):
             ext=os.path.splitext(name)[1].lower()
             if ext not in IMAGE_EXT: return self._send(415,{'error':'僅支援 JPG、PNG、WebP'})
             with LOCK, conn() as c:
-                item=c.execute('SELECT name FROM purchases WHERE id=?',(im.group(1),)).fetchone()
+                item=c.execute('SELECT name,deleting FROM purchases WHERE id=?',(im.group(1),)).fetchone()
                 if not item: return self._send(404,{'error':'item not found'})
+                if item['deleting']:return self._send(409,{'error':'此項目正在刪除'})
             b=self.rfile.read(n)
             signatures={'.jpg':b.startswith(b'\xff\xd8\xff'),'.jpeg':b.startswith(b'\xff\xd8\xff'),'.png':b.startswith(b'\x89PNG\r\n\x1a\n'),'.webp':b.startswith(b'RIFF') and b[8:12]==b'WEBP'}
             if not signatures[ext]: return self._send(415,{'error':'圖片格式不符'})
@@ -721,7 +743,12 @@ class H(BaseHTTPRequestHandler):
                 print('purchase image upload failed:',repr(e),flush=True)
                 return self._send(502,{'error':'storage unavailable'})
             with LOCK, conn() as c:
+                parent=c.execute('SELECT deleting FROM purchases WHERE id=?',(im.group(1),)).fetchone()
+                if not parent or parent['deleting']:
+                    purchase_safety.queue_file(c,'purchase_images',dict(id=aid,purchase_id=im.group(1),original_name=name,stored_name=stored,storage=storage))
+                    return self._send(409,{'error':'此項目已刪除或正在刪除，上傳檔案將自動清理'})
                 c.execute('INSERT INTO purchase_images VALUES(?,?,?,?,?,?,?,?)',(aid,im.group(1),name,stored,mime,n,storage,now_s()))
+                c.execute('UPDATE purchases SET revision=revision+1 WHERE id=?',(im.group(1),))
                 queue_notify(c,'buy_image','新增採購圖片','商品：'+item['name']+'\n檔案：'+name)
                 return self._send(200,{'purchases':purchase_rows(c,is_admin(self))})
         m = re.match(r"^/api/tasks/([\w-]+)/attachments$", p)
@@ -823,26 +850,7 @@ class H(BaseHTTPRequestHandler):
             except (ValueError,TypeError):return self._send(400,{'error':'invalid risk data'})
 
         pm=re.fullmatch(r'/api/purchases/([a-f0-9]+)',p)
-        if pm:
-            try:
-                self._purchase_raw=self._body();d=clean_purchase(self._purchase_raw)
-            except Exception as e:return self._send(400,{'error':str(e)})
-            with LOCK, conn() as c:
-                old=c.execute('SELECT * FROM purchases WHERE id=?',(pm.group(1),)).fetchone()
-                if not old: return self._send(404,{'error':'not found'})
-                admin=is_admin(self); perms=purchase_permissions(c)
-                payload=self._purchase_extra(d,old,admin,perms)
-                if payload is None:return self._send(403,{'error':'admin only field'})
-                d.update(payload)
-                c.execute('UPDATE purchases SET '+','.join(k+'=?' for k in d)+' WHERE id=?',(*d.values(),pm.group(1)))
-                if old['status']!=d['status']: queue_notify(c,'buy_status','採購狀態更新',d['name']+'：'+old['status']+' → '+d['status'])
-                if old['stock']!=d['stock']:queue_notify(c,'buy_stock','庫存確認更新',d['name']+'：'+str(old['stock'])+' → '+str(d['stock']))
-                if old['owner']!=d['owner']:queue_notify(c,'buy_owner','採購負責人更新',d['name']+'：'+str(old['owner'] or '未指派')+' → '+str(d['owner'] or '未指派'))
-                if old['refund']!=d['refund']:queue_notify(c,'buy_refund','報銷狀態更新',d['name']+'：'+str(old['refund'])+' → '+str(d['refund']))
-                changes = notify_changes(old,d,PURCHASE_NOTIFY_FIELDS)
-                if changes:
-                    queue_notify(c,'buy_edit','採購資料修改','商品：'+d['name']+'\n'+changes)
-                return self._send(200,{'purchases':purchase_rows(c,is_admin(self))})
+        if pm:return purchase_safety.patch(self,pm.group(1))
         m = re.match(r"^/api/tasks/([\w-]+)$", p)
         if not m: return self._send(404, {"error": "not found"})
         try: d = self._body()
@@ -850,6 +858,7 @@ class H(BaseHTTPRequestHandler):
         admin = is_admin(self)
         try:o = clean(d, partial=True)
         except ValueError as exc:return self._send(400,{"error":str(exc)})
+        if d.get('done_date') and not o.get('done_date'):return self._send(400,{'error':'完成時間格式不正確'})
         if not admin:
             if any(k != "done" for k in o):
                 return self._send(403, {"error": "一般組員僅可依管理員設定操作完成狀態"})
@@ -861,15 +870,21 @@ class H(BaseHTTPRequestHandler):
                 return self._send(403,{"error":"目前僅管理員可以勾選完成"})
             if "result" in o or "member_done" in o or "member_done_at" in o:
                 return self._send(403,{"error":"舊成果及回報完成欄位已停止編輯"})
-            if o.get("done") == 1 and not cur["done"] and not o.get("done_date"): o["done_date"] = now_s()
-            if o.get("done") == 0 and "done_date" not in o: o["done_date"] = ""
-            if o.get("member_done") == 1 and not cur["member_done"] and not o.get("member_done_at"): o["member_done_at"] = now_s()
-            if o.get("member_done") == 0 and "member_done_at" not in o: o["member_done_at"] = ""
+            if 'done_date' in o and o['done_date']:
+                try:datetime.strptime(o['done_date'],'%Y-%m-%d %H:%M')
+                except ValueError:return self._send(400,{'error':'完成時間格式不正確'})
+            if 'done' in o:
+                o['done_date']=(o.get('done_date') or cur['done_date'] or now_s()) if o['done'] else ''
+            elif 'done_date' in o:
+                o['done']=1 if o['done_date'] else 0
             sets = ",".join(f"{k}=?" for k in o) + ",updated=?"
             c.execute(f"UPDATE tasks SET {sets} WHERE id=?", (*o.values(), time.time(), m.group(1)))
             if "done" in o and bool(o["done"]) != bool(cur["done"]):
                 c.execute("INSERT INTO task_status_audit(task_id,task_name,before_done,after_done,actor,changed_at) VALUES(?,?,?,?,?,?)",
                           (m.group(1),cur["task"],int(bool(cur["done"])),int(bool(o["done"])),"管理員" if admin else "一般組員（未驗證身分）",now_s()))
+            if 'done_date' in o and o['done_date']!=(cur['done_date'] or ''):
+                c.execute('INSERT INTO task_time_audit(task_id,actor,before_time,after_time,changed_at) VALUES(?,?,?,?,?)',
+                          (m.group(1),'管理員' if admin else '一般組員（未驗證身分）',cur['done_date'] or '',o['done_date'],now_s()))
             current = dict(cur)
             current.update(o)
             summary = notify_fields(current, TASK_NOTIFY_FIELDS)
@@ -897,51 +912,9 @@ class H(BaseHTTPRequestHandler):
                 c.execute('DELETE FROM project_risks WHERE id=?',(rm.group(1),))
                 return self._send(200,{'ok':True})
 
-        receipt=re.fullmatch(r'/api/purchase-receipts/([a-f0-9]+)',p)
-        if receipt:
-            with LOCK, conn() as c:
-                a=c.execute('SELECT * FROM purchase_receipts WHERE id=?',(receipt.group(1),)).fetchone()
-                if not a:return self._send(404,{'error':'not found'})
-                try:
-                    if a['storage']=='bucket':s3_request('DELETE','receipts/'+a['stored_name'])
-                    else:os.remove(os.path.join(UPLOAD_DIR,a['stored_name']))
-                except FileNotFoundError:pass
-                except Exception:return self._send(502,{'error':'storage unavailable'})
-                c.execute('DELETE FROM purchase_receipts WHERE id=?',(receipt.group(1),))
-                return self._send(200,{'purchases':purchase_rows(c,True)})
-        pi=re.fullmatch(r'/api/purchase-images/([a-f0-9]+)',p)
-        if pi:
-            with LOCK, conn() as c:
-                a=c.execute('SELECT * FROM purchase_images WHERE id=?',(pi.group(1),)).fetchone()
-                if not a: return self._send(404,{'error':'not found'})
-                try:
-                    if a['storage']=='bucket': s3_request('DELETE','purchases/'+a['stored_name'])
-                    else: os.remove(os.path.join(UPLOAD_DIR,a['stored_name']))
-                except FileNotFoundError: pass
-                except Exception: return self._send(502,{'error':'storage unavailable'})
-                c.execute('DELETE FROM purchase_images WHERE id=?',(pi.group(1),))
-                queue_notify(c,'buy_delete','刪除採購圖片',a['original_name'])
-                return self._send(200,{'purchases':purchase_rows(c,is_admin(self))})
-        pm=re.fullmatch(r'/api/purchases/([a-f0-9]+)',p)
-        if pm:
-            with LOCK, conn() as c:
-                a=c.execute('SELECT * FROM purchases WHERE id=?',(pm.group(1),)).fetchone()
-                if not a: return self._send(404,{'error':'not found'})
-                images=c.execute('SELECT * FROM purchase_images WHERE purchase_id=?',(pm.group(1),)).fetchall()
-                receipts=c.execute('SELECT * FROM purchase_receipts WHERE purchase_id=?',(pm.group(1),)).fetchall()
-                try:
-                    for img in list(images)+list(receipts):
-                        prefix='receipts/' if img in receipts else 'purchases/'
-                        if img['storage']=='bucket': s3_request('DELETE',prefix+img['stored_name'])
-                        else:
-                            try: os.remove(os.path.join(UPLOAD_DIR,img['stored_name']))
-                            except FileNotFoundError: pass
-                except Exception: return self._send(502,{'error':'storage unavailable'})
-                c.execute('DELETE FROM purchase_images WHERE purchase_id=?',(pm.group(1),))
-                c.execute('DELETE FROM purchase_receipts WHERE purchase_id=?',(pm.group(1),))
-                c.execute('DELETE FROM purchases WHERE id=?',(pm.group(1),))
-                queue_notify(c,'buy_delete','刪除採購項目',a['name'])
-                return self._send(200,{'purchases':purchase_rows(c,is_admin(self))})
+        for pattern,table in [(r'/api/purchase-receipts/([a-f0-9]+)','purchase_receipts'),(r'/api/purchase-images/([a-f0-9]+)','purchase_images'),(r'/api/purchases/([a-f0-9]+)',None)]:
+            match=re.fullmatch(pattern,p)
+            if match:return purchase_safety.request_delete(self,match.group(1),table)
         fm = re.match(r"^/api/attachments/([\w-]+)$", p)
         if fm:
             with LOCK, conn() as c:
@@ -970,9 +943,11 @@ if __name__ == "__main__":
     progress.init()
     backup.init(sys.modules[__name__])
     threading.Thread(target=progress.worker, daemon=True).start()
+    threading.Thread(target=purchase_safety.worker, daemon=True).start()
     print(f"listening on {PORT}, db={DB}, attachment_storage={'bucket' if S3_ENABLED else 'local'}", flush=True)
     threading.Thread(target=mail_worker, daemon=True).start()
     ThreadingHTTPServer(("0.0.0.0", PORT), H).serve_forever()
+
 
 
 

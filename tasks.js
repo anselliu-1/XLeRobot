@@ -23,6 +23,50 @@
     document.body.classList.toggle("tk-admin", isAdmin);
     window.dispatchEvent(new CustomEvent("xle-admin-change",{detail:{admin:isAdmin}}));
   }
+  const taskDrafts=new Map(),saveStates=new Map();
+  let taskPending=0,taskQueue=Promise.resolve(),taskRenderNeeded=false;
+  const draftTask=t=>({...t,...(taskDrafts.get(t.id)||{})});
+  function stateMarkup(id){
+    const state=saveStates.get(id);
+    return '<span class="task-save-state" data-save-id="'+esc(id)+'" role="status" title="'+esc(state?.text||'')+'">'+(state?esc(state.kind==='error'?'儲存失敗，輸入已保留':state.text):'')+'</span>'+(state?.kind==='error'?'<button type="button" class="btn ghost task-retry" data-task-retry="'+esc(id)+'">重試儲存</button>':'');
+  }
+  function markTask(id,kind,text){
+    saveStates.set(id,{kind,text});
+    const row=[...document.querySelectorAll('#tkTable .tk[data-id]')].find(r=>r.dataset.id===id);
+    const el=row?.querySelector('[data-save-feedback]');if(el)el.innerHTML=stateMarkup(id);
+  }
+  function saveTask(id,patch){
+    taskDrafts.set(id,{...(taskDrafts.get(id)||{}),...patch});
+    taskPending++;markTask(id,'saving','儲存中…');
+    const job={...patch};
+    taskQueue=taskQueue.then(async()=>{
+      try{
+        const response=await fetch('/api/tasks/'+id,{method:'PATCH',headers:{'Content-Type':'application/json',...hdr()},body:JSON.stringify(job)});
+        const data=await response.json();if(!response.ok)throw Error(data.error||'儲存失敗');
+        apply(data);setSync(true);
+        const draft=taskDrafts.get(id)||{};
+        for(const [k,v] of Object.entries(job))if(draft[k]===v)delete draft[k];
+        if(Object.keys(draft).length)taskDrafts.set(id,draft);else taskDrafts.delete(id);
+        const saved=tasks.find(t=>t.id===id),row=[...document.querySelectorAll('#tkTable .tk[data-id]')].find(r=>r.dataset.id===id);
+        if(saved&&row){
+          for(const key of ['done','done_date']){
+            const input=row.querySelector('[data-k="'+key+'"]');
+            if(input&&document.activeElement!==input&&!(key in draft)){
+              if(key==='done')input.checked=!!saved.done;else input.value=(saved.done_date||'').replace(' ','T');
+            }
+          }
+          const label=row.querySelector('.when');if(label)label.textContent=saved.done?'已完成':late(saved)?'已逾期':'進行中';
+        }
+        markTask(id,'saved','已儲存');taskRenderNeeded=true;
+      }catch(error){markTask(id,'error','儲存失敗：'+error.message+'（輸入已保留）');setSync(false);}
+      finally{taskPending--;if(!taskPending){
+        for(const [key] of taskDrafts)if(saveStates.get(key)?.kind!=='error')markTask(key,'error','部分變更尚未儲存（輸入已保留）');
+        if(!editing()){render();taskRenderNeeded=false;}
+      }}
+    });
+    return taskQueue;
+  }
+  window.addEventListener('beforeunload',e=>{if(taskPending||taskDrafts.size){e.preventDefault();e.returnValue='';}});
   let filter = "all", whoF = "", sortBy = "due";
 
   function setSync(ok, msg) {
@@ -67,18 +111,18 @@
   }
   const editing = () => { const a = document.activeElement; return a && a.closest && a.closest("#tkTable") && a.matches(".in"); };
   async function poll() {
-    if (!pending && !editing()) {
+    if (!pending && !taskPending && !editing()) {
       try {
         const r = await fetch(API + "/api/tasks?since=" + rev, { headers: hdr(), cache: "no-store" });
         if (!r.ok) throw new Error(r.status);
         const d = await r.json();
-        if (!d.unchanged) { apply(d); render(); }
+        if (!d.unchanged && !taskPending && !editing()) { apply(d); render(); }
         setSync(true);
       } catch (e) { setSync(false); }
     }
     setTimeout(poll, document.hidden ? 10000 : 3000);
   }
-  document.addEventListener("visibilitychange", () => { if (!document.hidden && !editing()) fetch(API + "/api/tasks", { headers: hdr(), cache: "no-store" }).then(r => r.json()).then(d => { apply(d); render(); setSync(true); }).catch(() => setSync(false)); });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && !taskPending && !editing()) fetch(API + "/api/tasks", { headers: hdr(), cache: "no-store" }).then(r => r.json()).then(d => { apply(d); render(); setSync(true); }).catch(() => setSync(false)); });
 
   const fin = t => !!t.done;
   const late = t => !t.done && t.due && t.due < today();
@@ -101,13 +145,13 @@
     const per = whos.map(w => { const a = tasks.filter(t => people(t.who).includes(w)); const d = a.filter(t => t.done).length; return `<span class="chip"><b>${esc(w)}</b> ${d}/${a.length}</span>`; }).join("");
     $("#tkStats").innerHTML = `
       <div class="st"><span>工作主題已完成</span><b>${rep} / ${total}</b><div class="pbar"><i style="width:${pct}%"></i></div></div>
-      ${isAdmin ? `<div class="st adm"><span>管理員確認完成</span><b>${chk} / ${total}</b><div class="pbar"><i style="width:${pct2}%"></i></div></div>` : `<div class="st"><span>未完成</span><b>${total - rep}</b></div>`}
+      <div class="st"><span>未完成</span><b>${total - rep}</b></div>
       <div class="st ${lt ? "warn" : ""}"><span>已逾期</span><b>${lt}</b></div>
       <div class="st"><span>未指派</span><b>${none}</b></div>
       ${per ? `<div class="st wide"><span>各負責者已完成主題數</span><div class="chips">${per}</div></div>` : ""}`;
 
     // 列表
-    let list = tasks.filter(t =>
+    let list = tasks.map(draftTask).filter(t =>
       (filter === "all" || (filter === "todo" && !fin(t)) || (filter === "done" && fin(t)) || (filter === "late" && late(t))) &&
       (!whoF || (whoF === "__none" ? !people(t.who).length : people(t.who).includes(whoF))));
     const byDue = (a, b) => (a.due || "9999").localeCompare(b.due || "9999");
@@ -121,9 +165,9 @@
     const head = `<div class="tk h"><span>完成狀態</span><span>工作主題</span><span>負責者</span><span>截止</span><span>優先</span><span>目標</span><span>進度回報／歷史成果</span>${isAdmin ? "<span>完成時間</span><span></span>" : ""}</div>`;
     $("#tkTable").innerHTML = head + (list.length ? list.map(t => `
       <div class="tk ${t.done ? "rep" : ""} ${isAdmin && t.done ? "done" : ""} ${late(t) ? "late" : ""}" data-id="${t.id}">
-        <div class="ckc"><label class="ck"><input type="checkbox" data-k="done" ${t.done ? "checked" : ""} ${canComplete?"":"disabled"} aria-label="工作主題完成"></label><span class="when">${t.done ? "已完成" : late(t) ? "已逾期" : "進行中"}</span></div>
+        <div class="ckc"><label class="ck"><input type="checkbox" data-k="done" ${t.done ? "checked" : ""} ${canComplete?"":"disabled"} aria-label="工作主題完成"></label><span class="when">${t.done ? "已完成" : late(t) ? "已逾期" : "進行中"}</span><div class="task-save-feedback" data-save-feedback>${isAdmin||saveStates.has(t.id)?stateMarkup(t.id):""}</div></div>
         <textarea class="in task" rows="1" ${ro} data-k="task" aria-label="工作內容">${esc(t.task)}</textarea>
-        <div class="whos" data-k2="who">${(() => { const p = people(t.who).slice(0, 4); const n = isAdmin ? Math.min(4, p.length + 1) : Math.max(1, p.length); return Array.from({ length: n }, (_, i) => `<input class="in w" ${ro} value="${esc(p[i] || "")}" list="whoList" placeholder="${i ? (isAdmin ? "＋負責者" : "") : "未指派"}" aria-label="負責者 ${i + 1}">`).join(""); })()}</div>
+        <div class="whos" data-k2="who">${(() => { const p = people(t.who).slice(0, 4); const n = isAdmin ? Math.min(4, p.length + 1) : Math.max(1, p.length); return Array.from({ length: n }, (_, i) => `<span class="who-control"><input class="in w" ${ro} value="${esc(p[i] || "")}" list="whoList" placeholder="${i ? (isAdmin ? "＋負責者" : "") : "未指派"}" aria-label="負責者 ${i + 1}">${isAdmin?'<button type="button" class="who-picker" aria-label="選擇負責者"><svg aria-hidden="true" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></button>':''}</span>`).join(""); })()}</div>
         <input class="in" type="date" ${ro} data-k="due" value="${esc(t.due)}" aria-label="截止">
         <select class="in pri p${PRI[t.pri]}" ${ro} data-k="pri" aria-label="優先級">${["高", "中", "低"].map(p => `<option${p === t.pri ? " selected" : ""}>${p}</option>`).join("")}</select>
         <textarea class="in" rows="1" ${ro} data-k="note" placeholder="—" aria-label="目標" maxlength="10000" title="目標上限 10,000 字">${esc(t.note)}</textarea>
@@ -172,15 +216,21 @@
     }
     if (el.classList.contains("w")) {
       const who = joinP([...el.closest(".whos").querySelectorAll("input")].flatMap(i => people(i.value)));
-      call("PATCH", "/api/tasks/" + row.dataset.id, { who }).catch(() => {}); return;
+      saveTask(row.dataset.id, { who }); return;
     }
     if (!el.dataset.k) return;
     const val = el.type === "checkbox" ? el.checked : el.value.trim();
-    call("PATCH", "/api/tasks/" + row.dataset.id, { [el.dataset.k]: val }).catch(() => {});
+    saveTask(row.dataset.id, { [el.dataset.k]: val });
   });
   tbl.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey && e.target.matches(".in")) { e.preventDefault(); e.target.blur(); } });
   tbl.addEventListener("input", e => { if (e.target.tagName === "TEXTAREA") { e.target.style.height = "auto"; e.target.style.height = e.target.scrollHeight + 2 + "px"; } });
+  tbl.addEventListener('focusout',()=>setTimeout(()=>{if(taskRenderNeeded&&!taskPending&&!editing()){render();taskRenderNeeded=false;}},0));
   tbl.addEventListener("click", e => {
+    const picker=e.target.closest('.who-picker');
+    if(picker){const input=picker.parentElement.querySelector('input');input.focus();try{input.showPicker?.();}catch{};return;}
+    const retry=e.target.closest('[data-task-retry]');
+    if(retry){saveTask(retry.dataset.taskRetry,taskDrafts.get(retry.dataset.taskRetry)||{});return;}
+
     const add=e.target.closest("[data-task-add]");
     if(add){window.dispatchEvent(new CustomEvent("xle-progress-task",{detail:{taskId:add.dataset.taskAdd,openForm:true}}));document.querySelector('[data-view="progress"]').click();return;}
     const link=e.target.closest("[data-task-reports]");
@@ -240,4 +290,5 @@
   fetch(API + "/api/tasks", { headers: hdr(), cache: "no-store" }).then(r => { if (!r.ok) throw 0; return r.json(); })
     .then(d => { apply(d); render(); setSync(true); }).catch(() => setSync(false)).finally(() => setTimeout(poll, 3000));
 })();
+
 

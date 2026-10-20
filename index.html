@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261020datespace1">
+<link rel="stylesheet" href="style.css?v=20261020approved1">
 <link rel="stylesheet" href="progress.css?v=20261019b">
 </head>
 <body>
@@ -139,12 +139,12 @@
     <p class="muted" id="buyMsg"></p><div id="buyItems" class="hwgrid"></div>
     <form id="buyForm" class="plan" hidden><h3 id="buyFormTitle">新增採購項目</h3>
     <div class="buy-form-grid"><label>品名（必填）<input name="name" required maxlength="160"></label>
-    <label>規格／型號<textarea name="spec" rows="2"></textarea></label>
+    <label>規格／型號<textarea name="spec" maxlength="10000" title="上限 10,000 字" rows="2"></textarea></label>
     <label>數量<input name="qty" type="number" min="1" value="1" required></label>
     <label>預估單價（NT$）<input name="price" type="number" min="0" step="0.01" value="0" required></label>
     <label>庫存確認<select name="stock"><option>尚未確認</option><option>有</option><option>沒有</option></select></label><label>採購狀態<select name="status"><option>待確認</option><option>待採購</option><option>已購買</option><option>已到貨</option><option>不需採購</option></select></label>
     <label id="buyOwnerField" hidden>負責人（管理員選填）<input name="owner" maxlength="100" placeholder="未指派則留空"></label><label>實際金額（NT$）<input name="actual_price" type="number" min="0" step="0.01" value="0"></label><label>購買連結<input name="url" type="url" placeholder="https://"></label>
-    <label>備註<textarea name="note" rows="2"></textarea></label></div>
+    <label>備註<textarea name="note" maxlength="10000" title="上限 10,000 字" rows="2"></textarea></label></div>
     <div class="bar"><button class="btn" type="submit">儲存</button><button class="btn ghost" type="button" id="buyCancel">取消</button></div></form>
   </section>
 
@@ -346,10 +346,10 @@
 
     <form class="tkform own" id="tkForm" autocomplete="off">
       <label class="f-task"><span>工作內容</span><input id="fTask" required placeholder="例如：量測單支手臂待機電流"></label>
-      <div class="f-who"><span>負責者（最多 4 人）</span><div class="w4"><input id="fWho" list="whoList" placeholder="負責者 1" aria-label="負責者 1"><input id="fWho2" list="whoList" placeholder="負責者 2" aria-label="負責者 2"><input id="fWho3" list="whoList" placeholder="負責者 3" aria-label="負責者 3"><input id="fWho4" list="whoList" placeholder="負責者 4" aria-label="負責者 4"></div></div>
+      <div class="f-who"><span>負責者（最多 4 人）</span><div class="w4"><span class="who-control"><input id="fWho" list="whoList" placeholder="負責者 1" aria-label="負責者 1"><button type="button" class="who-picker" aria-label="選擇負責者" onclick="const i=this.previousElementSibling;i.focus();try{i.showPicker?.()}catch{}"><svg aria-hidden="true" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></button></span><span class="who-control"><input id="fWho2" list="whoList" placeholder="負責者 2" aria-label="負責者 2"><button type="button" class="who-picker" aria-label="選擇負責者" onclick="const i=this.previousElementSibling;i.focus();try{i.showPicker?.()}catch{}"><svg aria-hidden="true" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></button></span><span class="who-control"><input id="fWho3" list="whoList" placeholder="負責者 3" aria-label="負責者 3"><button type="button" class="who-picker" aria-label="選擇負責者" onclick="const i=this.previousElementSibling;i.focus();try{i.showPicker?.()}catch{}"><svg aria-hidden="true" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></button></span><span class="who-control"><input id="fWho4" list="whoList" placeholder="負責者 4" aria-label="負責者 4"><button type="button" class="who-picker" aria-label="選擇負責者" onclick="const i=this.previousElementSibling;i.focus();try{i.showPicker?.()}catch{}"><svg aria-hidden="true" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></button></span></div></div>
       <label><span>截止</span><input id="fDue" type="date"></label>
       <label><span>優先級</span><select id="fPri"><option>高</option><option selected>中</option><option>低</option></select></label>
-      <label class="f-note"><span>目標（僅管理員可編輯，上限 10,000 字）</span><input id="fNote" maxlength="10000" placeholder="請填寫預計達成的成果或驗收條件"></label>
+      <label class="f-note"><span>目標 <small class="field-hint">僅管理員可編輯 · 上限 10,000 字</small></span><input id="fNote" maxlength="10000" placeholder="請填寫預計達成的成果或驗收條件"></label>
       <button class="btn primary" type="submit">新增工作</button>
     </form>
     <datalist id="whoList"></datalist>
@@ -466,9 +466,9 @@
 <script src="data.js?v=20261007a"></script>
 <script src="app.js?v=20261019g"></script>
 <script src="nav-scroll.js?v=20261019nav1"></script>
-<script src="tasks.js?v=20261020fix5"></script>
+<script src="tasks.js?v=20261020approved1"></script>
 <script src="admin-files.js?v=20261019fix1"></script>
-<script src="purchases.js?v=20261019fix1"></script>
+<script src="purchases.js?v=20261020approved1"></script>
 <script src="admin-pages.js?v=20261019fix1"></script>
 <script src="risks-admin.js?v=20261012a"></script>
 <script src="progress.js?v=20261019fix1"></script>
@@ -839,6 +839,7 @@ loadSiteInfo();
 
 </script></body>
 </html>
+
 
 
 
