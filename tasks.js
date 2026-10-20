@@ -129,7 +129,7 @@
         <textarea class="in" rows="1" ${ro} data-k="note" placeholder="—" aria-label="目標">${esc(t.note)}</textarea>
         <div class="resultbox">
           <button type="button" class="btn ghost" data-task-reports="${esc(t.id)}">查看回報（${t.report_count||0}）</button>
-          ${t.latest_report ? `<small>最近：${esc(t.latest_report.created.slice(0,16))} · ${esc(t.latest_report.subject)}</small><small>${esc(t.latest_report.content.slice(0,90))}</small>` : '<small>尚無關聯回報</small>'}
+          ${t.latest_report ? `<div class="tk-latest-report"><small class="tk-latest-date">最近回報 · ${esc(t.latest_report.created.slice(0,16).replace("T"," "))}</small><small class="tk-latest-subject" title="${esc(t.latest_report.subject)}">${esc(t.latest_report.subject)}</small><small class="tk-latest-content" title="${esc(t.latest_report.content.slice(0,300))}">${esc(t.latest_report.content.slice(0,90))}</small></div>` : '<small>尚無關聯回報</small>'}
           <button type="button" class="btn ghost" data-task-add="${esc(t.id)}">新增回報</button>
           ${t.result || (t.attachments||[]).length ? `<details><summary>歷史成果與附件（唯讀）</summary><p>${esc(t.result)}</p>${(t.attachments||[]).map(a=>`<p><a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.original_name)}</a></p>`).join('')}</details>` : ''}
         </div>
