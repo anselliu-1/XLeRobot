@@ -759,3 +759,38 @@ body.tk-admin #tkTable .tk .task-completed-single{box-sizing:border-box;min-heig
   #tkTable .tk .task-completed-single{max-width:none}
   #plan #tkFilter{flex-wrap:wrap}
 }
+
+/* Keep restore controls aligned and reveal actions only at their intended step. */
+.restore-backup{margin-top:28px;padding-top:24px;border-top:1px solid var(--line);display:grid;gap:20px;min-width:0}
+.restore-backup [hidden]{display:none!important}
+.restore-backup-head h3{margin:0 0 12px}
+.restore-backup-head p{margin:8px 0 0;line-height:1.8}
+.restore-backup .restore-limits{font-size:13px}
+.restore-backup .restore-step{padding:20px;border:1px solid var(--line);border-radius:10px;background:var(--surface);min-width:0}
+.restore-backup h4{margin:0 0 16px;font-size:15px}
+.restore-backup .restore-file-label{display:block;margin:0 0 10px;font-weight:500}
+.restore-backup input[type=file]{display:block;width:100%;max-width:100%;box-sizing:border-box;min-height:44px;border:1px solid var(--line);border-radius:8px;padding:8px;background:var(--card);color:var(--ink);font:inherit;font-size:14px}
+.restore-backup input[type=file]::file-selector-button{margin-right:12px;border:1px solid var(--line);border-radius:6px;padding:8px 12px;background:var(--surface);color:var(--ink);font:inherit;cursor:pointer}
+.restore-backup input[type=file]:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.restore-backup .restore-actions{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:16px}
+.restore-backup .restore-actions .btn{min-height:42px;margin:0;white-space:normal}
+.restore-backup .restore-final-actions:not(:has(> :not([hidden]))){display:none}
+.restore-backup .restore-step-help{margin:0;line-height:1.8}
+.restore-backup #restoreBackupMsg{margin:16px 0 0;line-height:1.8;overflow-wrap:anywhere}
+.restore-backup #restoreBackupMsg:empty,.restore-backup .restore-preview:empty{display:none}
+.restore-backup .restore-preview{margin-top:20px}
+.restore-backup .restore-preview p{margin:14px 0;line-height:1.8;overflow-wrap:anywhere}
+.restore-backup .restore-preview table{min-width:280px;background:var(--card);font-variant-numeric:tabular-nums}
+.restore-backup .restore-preview td,.restore-backup .restore-preview th{padding:12px 14px}
+.restore-backup .restore-preview td:not(:first-child),.restore-backup .restore-preview th:not(:first-child){text-align:right}
+.restore-backup .restore-notes{padding:18px 20px;border-left:3px solid var(--line);background:var(--surface);border-radius:0 8px 8px 0}
+.restore-backup .restore-notes h4{margin:0 0 10px}
+.restore-backup .restore-notes ul{padding-left:20px;margin:0;line-height:1.8}
+.restore-backup .restore-notes li+li{margin-top:8px}
+@media(max-width:600px){
+ .restore-backup{gap:16px;margin-top:24px;padding-top:20px}
+ .restore-backup .restore-step,.restore-backup .restore-notes{padding:16px}
+ .restore-backup .restore-actions{align-items:stretch;flex-direction:column}
+ .restore-backup .restore-actions .btn{width:100%;box-sizing:border-box}
+ .restore-backup input[type=file]{font-size:13px}
+}
