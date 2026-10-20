@@ -216,7 +216,10 @@ def clean(d, partial=False):
             v = str(v or "").strip().replace("T", " ")[:16]
             o[k] = v if (v == "" or DT.match(v)) else ""
         elif k in ("note", "result"):
-            o[k] = str(v or "").strip()[:1000]
+            text = str(v or "").strip()
+            limit = 10000 if k == "note" else 1000
+            if len(text)>limit:raise ValueError("目標最多 10,000 字，請縮短後再儲存" if k == "note" else "歷史成果文字過長")
+            o[k] = text
         elif k == "pri":
             o[k] = v if v in ("高", "中", "低") else "中"
         else:
@@ -475,15 +478,8 @@ class H(BaseHTTPRequestHandler):
         if p == '/api/purchases':
             with LOCK, conn() as c: return self._send(200, {'purchases':purchase_rows(c,is_admin(self)),'permissions':purchase_permissions(c) if is_admin(self) else {'refund_view':purchase_permissions(c)['refund_view'],'refund_edit':purchase_permissions(c)['refund_edit']}})
         if p == '/api/tasks/completion-settings':
-            if self._deny(): return
-            try:
-                d=self._body()
-                if type(d.get('allow_members')) is not bool: raise ValueError()
-            except Exception: return self._send(400,{'error':'設定格式錯誤'})
-            with LOCK,conn() as c:
-                c.execute("INSERT OR REPLACE INTO meta(k,v) VALUES('member_completion_allowed',?)",('1' if d['allow_members'] else '0',))
-                bump(c)
-            return self._send(200,{'allow_members':d['allow_members']})
+            if self._deny():return
+            with LOCK,conn() as c:return self._send(200,{'allow_members':member_completion_allowed(c)})
         if p == '/api/purchases/permissions':
             if self._deny(): return
             with LOCK, conn() as c: return self._send(200,purchase_permissions(c))
@@ -585,6 +581,16 @@ class H(BaseHTTPRequestHandler):
         if backup.route(self): return
         if progress.route(self, "POST"): return
         p = self._path()
+        if p == '/api/tasks/completion-settings':
+            if self._deny(): return
+            try:
+                d=self._body()
+                if type(d.get('allow_members')) is not bool: raise ValueError()
+            except Exception: return self._send(400,{'error':'設定格式錯誤'})
+            with LOCK,conn() as c:
+                c.execute("INSERT OR REPLACE INTO meta(k,v) VALUES('member_completion_allowed',?)",('1' if d['allow_members'] else '0',))
+                bump(c)
+            return self._send(200,{'allow_members':d['allow_members']})
         if p == '/api/admin/files/zip':
             if self._deny():return
             try:
@@ -755,7 +761,8 @@ class H(BaseHTTPRequestHandler):
             return self._send(403, {"error": "owner only"})
         with LOCK, conn() as c:
             if p == "/api/tasks":
-                o = clean(d)
+                try:o = clean(d)
+                except ValueError as exc:return self._send(400,{"error":str(exc)})
                 if not admin: o.pop("done", None); o.pop("done_date", None)
                 if o.get("done") and not o.get("done_date"): o["done_date"] = now_s()
                 n = (c.execute("SELECT COALESCE(MAX(n),0) FROM tasks").fetchone()[0] or 0) + 1
@@ -766,12 +773,18 @@ class H(BaseHTTPRequestHandler):
             if p == "/api/import":
                 arr = d.get("tasks") if isinstance(d, dict) else None
                 if not isinstance(arr, list): return self._send(400, {"error": "no tasks"})
+                try:
+                    prepared=[]
+                    for item in arr[:1000]:
+                        if not isinstance(item,dict) or not item.get('task'):continue
+                        t=dict(item)
+                        if 'done_date' not in t and 'doneDate' in t:t['done_date']=t['doneDate']
+                        prepared.append((t,clean(t)))
+                except (ValueError,TypeError) as exc:return self._send(400,{"error":str(exc)})
                 if d.get("mode") == "replace": c.execute("DELETE FROM tasks")
                 n = (c.execute("SELECT COALESCE(MAX(n),0) FROM tasks").fetchone()[0] or 0)
-                for t in arr[:1000]:
-                    if not isinstance(t, dict) or not t.get("task"): continue
-                    if "done_date" not in t and "doneDate" in t: t["done_date"] = t["doneDate"]
-                    o = clean(t); n += 1
+                for t,o in prepared:
+                    n += 1
                     tid = str(t.get("id") or uuid.uuid4().hex[:10])[:40]
                     c.execute("INSERT OR REPLACE INTO tasks(id,n,task,who,due,done_date,pri,note,done,result,member_done,member_done_at,updated) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
                               (tid, n, o["task"], o.get("who", ""), o.get("due", ""), o.get("done_date", ""), o.get("pri", "中"), o.get("note", ""), o.get("done", 0), o.get("result", ""), o.get("member_done", 0), o.get("member_done_at", ""), time.time()))
@@ -835,7 +848,8 @@ class H(BaseHTTPRequestHandler):
         try: d = self._body()
         except Exception: return self._send(400, {"error": "bad json"})
         admin = is_admin(self)
-        o = clean(d, partial=True)
+        try:o = clean(d, partial=True)
+        except ValueError as exc:return self._send(400,{"error":str(exc)})
         if not admin:
             if any(k != "done" for k in o):
                 return self._send(403, {"error": "一般組員僅可依管理員設定操作完成狀態"})
@@ -959,5 +973,6 @@ if __name__ == "__main__":
     print(f"listening on {PORT}, db={DB}, attachment_storage={'bucket' if S3_ENABLED else 'local'}", flush=True)
     threading.Thread(target=mail_worker, daemon=True).start()
     ThreadingHTTPServer(("0.0.0.0", PORT), H).serve_forever()
+
 
 

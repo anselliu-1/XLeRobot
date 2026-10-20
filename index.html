@@ -349,7 +349,7 @@
       <div class="f-who"><span>負責者（最多 4 人）</span><div class="w4"><input id="fWho" list="whoList" placeholder="負責者 1" aria-label="負責者 1"><input id="fWho2" list="whoList" placeholder="負責者 2" aria-label="負責者 2"><input id="fWho3" list="whoList" placeholder="負責者 3" aria-label="負責者 3"><input id="fWho4" list="whoList" placeholder="負責者 4" aria-label="負責者 4"></div></div>
       <label><span>截止</span><input id="fDue" type="date"></label>
       <label><span>優先級</span><select id="fPri"><option>高</option><option selected>中</option><option>低</option></select></label>
-      <label class="f-note"><span>目標（僅管理員可編輯）</span><input id="fNote" placeholder="請填寫預計達成的成果或驗收條件"></label>
+      <label class="f-note"><span>目標（僅管理員可編輯，上限 10,000 字）</span><input id="fNote" maxlength="10000" placeholder="請填寫預計達成的成果或驗收條件"></label>
       <button class="btn primary" type="submit">新增工作</button>
     </form>
     <datalist id="whoList"></datalist>
@@ -466,7 +466,7 @@
 <script src="data.js?v=20261007a"></script>
 <script src="app.js?v=20261019g"></script>
 <script src="nav-scroll.js?v=20261019nav1"></script>
-<script src="tasks.js?v=20261020latest2"></script>
+<script src="tasks.js?v=20261020fix5"></script>
 <script src="admin-files.js?v=20261019fix1"></script>
 <script src="purchases.js?v=20261019fix1"></script>
 <script src="admin-pages.js?v=20261019fix1"></script>
@@ -839,5 +839,6 @@ loadSiteInfo();
 
 </script></body>
 </html>
+
 
 

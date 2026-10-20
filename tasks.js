@@ -60,9 +60,9 @@
     try {
       const r = await fetch(API + path, { method, headers: { ...(body ? { "Content-Type": "application/json" } : {}), ...hdr() }, body: body ? JSON.stringify(body) : undefined });
       if (r.status === 403) { render(); alert("這個欄位只有管理者能修改。組員可以勾選「回報完成」和填寫「成果」。"); throw new Error("403"); }
-      if (!r.ok) throw new Error(r.status);
+      if (!r.ok) {let d={};try{d=await r.json();}catch{};throw new Error(d.error||r.status);}
       const d = await r.json(); apply(d); setSync(true); render(); return d;
-    } catch (e) { if (e.message !== "403") { setSync(false); alert("無法儲存到共用清單，請檢查網路後再試一次。"); } throw e; }
+    } catch (e) { if (e.message !== "403") { setSync(false); alert("無法儲存到共用清單："+e.message); } throw e; }
     finally { pending = false; }
   }
   const editing = () => { const a = document.activeElement; return a && a.closest && a.closest("#tkTable") && a.matches(".in"); };
@@ -91,7 +91,7 @@
     const whos = [...new Set(tasks.flatMap(t => people(t.who)))].sort((a, b) => a.localeCompare(b, "zh-Hant"));
     $("#whoList").innerHTML = whos.map(w => `<option value="${esc(w)}">`).join("");
     const sel = $("#tkWho");
-    if (whoF && !whos.includes(whoF)) whoF = "";
+    if (whoF && whoF !== "__none" && !whos.includes(whoF)) whoF = "";
     sel.innerHTML = `<option value="">所有負責者</option><option value="__none"${whoF === "__none" ? " selected" : ""}>未指派</option>` + whos.map(w => `<option${w === whoF ? " selected" : ""}>${esc(w)}</option>`).join("");
 
     // 統計
@@ -126,7 +126,7 @@
         <div class="whos" data-k2="who">${(() => { const p = people(t.who).slice(0, 4); const n = isAdmin ? Math.min(4, p.length + 1) : Math.max(1, p.length); return Array.from({ length: n }, (_, i) => `<input class="in w" ${ro} value="${esc(p[i] || "")}" list="whoList" placeholder="${i ? (isAdmin ? "＋負責者" : "") : "未指派"}" aria-label="負責者 ${i + 1}">`).join(""); })()}</div>
         <input class="in" type="date" ${ro} data-k="due" value="${esc(t.due)}" aria-label="截止">
         <select class="in pri p${PRI[t.pri]}" ${ro} data-k="pri" aria-label="優先級">${["高", "中", "低"].map(p => `<option${p === t.pri ? " selected" : ""}>${p}</option>`).join("")}</select>
-        <textarea class="in" rows="1" ${ro} data-k="note" placeholder="—" aria-label="目標">${esc(t.note)}</textarea>
+        <textarea class="in" rows="1" ${ro} data-k="note" placeholder="—" aria-label="目標" maxlength="10000" title="目標上限 10,000 字">${esc(t.note)}</textarea>
         <div class="resultbox">
           <button type="button" class="btn ghost" data-task-reports="${esc(t.id)}">查看回報（${t.report_count||0}）</button>
           ${t.latest_report ? `<div class="tk-latest-report"><small class="tk-latest-label">最近回報</small><small class="tk-latest-date"><span>${esc(t.latest_report.created.slice(0,10).replaceAll("-","/"))}</span><span>${esc(t.latest_report.created.slice(11,16))}</span></small><div class="tk-latest-field"><small class="tk-latest-field-label">主題</small><small class="tk-latest-subject" title="${esc(t.latest_report.subject)}">${esc(t.latest_report.subject)}</small></div><div class="tk-latest-field"><small class="tk-latest-field-label">內容</small><small class="tk-latest-content" title="${esc(t.latest_report.content.slice(0,300))}">${esc(t.latest_report.content.slice(0,90))}</small></div></div>` : '<small>尚無關聯回報</small>'}
@@ -209,8 +209,8 @@
   $("#tkExport").addEventListener("click", () => dl(`XLeRobot-分工時程-${stamp()}.json`, JSON.stringify({ app: "xlerobot-tasks", v: 2, exported: new Date().toISOString(), tasks }, null, 2), "application/json"));
   $("#tkCsv").addEventListener("click", () => {
     const q = s => `"${String(s ?? "").replace(/"/g, '""')}"`;
-    const H = ["原組員回報完成", "原回報完成時間", "工作內容", "負責者", "截止", "優先級", "目標", "歷史成果"].concat(isAdmin ? ["組長複檢", "複檢確認時間"] : []);
-    const rows = [H].concat(tasks.map(t => [t.member_done ? "是" : "否", t.member_done_at, t.task, t.who, t.due, t.pri, t.note, t.result].concat(isAdmin ? [t.done ? "是" : "否", t.done_date || ""] : [])));
+    const H = ["工作完成狀態", "工作內容", "負責者", "截止", "優先級", "目標", "歷史成果"].concat(isAdmin ? ["完成時間"] : []).concat(["歷史：組員回報完成", "歷史：組員回報時間"]);
+    const rows = [H].concat(tasks.map(t => [t.done ? "已完成" : "未完成", t.task, t.who, t.due, t.pri, t.note, t.result].concat(isAdmin ? [t.done_date || ""] : []).concat([t.member_done ? "是" : "否", t.member_done_at])));
     dl(`XLeRobot-分工時程-${stamp()}.csv`, "\ufeff" + rows.map(r => r.map(q).join(",")).join("\r\n"), "text/csv");
   });
   $("#tkImport").addEventListener("change", e => {
@@ -240,3 +240,4 @@
   fetch(API + "/api/tasks", { headers: hdr(), cache: "no-store" }).then(r => { if (!r.ok) throw 0; return r.json(); })
     .then(d => { apply(d); render(); setSync(true); }).catch(() => setSync(false)).finally(() => setTimeout(poll, 3000));
 })();
+

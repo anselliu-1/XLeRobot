@@ -245,6 +245,7 @@ def create(h):
                     with open(path,'xb') as stream: stream.write(data)
                 c.execute('INSERT INTO progress_files(id,report_id,name,size,object_key,storage) VALUES(?,?,?,?,?,?)',(fid,rid,name,len(data),key,storage))
             event(c,rid,'接續回報' if old else '新增回報','回報人（自行填寫）：'+reporter)
+            A.bump(c)
         stored=[]
         return h._send(201,{'id':rid,'version':version})
     finally:
@@ -323,6 +324,7 @@ def moderate(h,rid,action):
             # Commit a durable removal intention first; retries finish an interrupted deletion.
             c.execute('UPDATE progress_files SET removed_at=?,reason=? WHERE id=?',(stamp(),reason,fid))
             event(c,rid,'附件移除','已驗證管理員',reason+'；檔名：'+f['name'],fid)
+        A.bump(c)
     if action=='remove-file':
         # Public download is disabled before storage deletion. Retained metadata remains searchable.
         try:
@@ -362,6 +364,7 @@ def permanently_delete(h,rid):
         c.execute('DELETE FROM progress_audit WHERE report_id=?',(rid,))
         c.execute('DELETE FROM progress_files WHERE report_id=?',(rid,))
         c.execute('DELETE FROM progress_reports WHERE id=?',(rid,))
+        A.bump(c)
     retry_cleanup([f['id'] for f in files if not f['cleared_at']])
     with A.LOCK,A.conn() as c:
         pending=any(c.execute("SELECT 1 FROM progress_cleanup WHERE id=? AND completed=''",(f['id'],)).fetchone() for f in files)
@@ -395,6 +398,7 @@ def route(h,method):
                     c.execute('UPDATE progress_reports SET task_id=?,task_name=? WHERE id=?',(task_id,new_name,rid))
                     c.execute('INSERT INTO progress_audit(report_id,action,actor,reason,created) VALUES(?,?,?,?,?)',
                               (rid,'修正工作關聯','管理員',str(old['task_name'])+' → '+new_name+'；'+reason,stamp()))
+                    A.bump(c)
                 h._send(200,{'ok':True})
         elif method=='POST' and p=='/api/progress/settings':
             if not A.is_admin(h): h._send(403,{'error':'需要管理員'})
@@ -431,4 +435,5 @@ def route(h,method):
         print('progress request failed:',type(exc).__name__,flush=True)
         h.close_connection=True; h._send(503,{'error':'儲存服務暫時無法使用，請重新整理確認後再試'})
     return True
+
 
