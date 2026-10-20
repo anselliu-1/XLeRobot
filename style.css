@@ -663,3 +663,10 @@ body.tk-admin .tk{grid-template-columns:84px 1.8fr minmax(168px,1.1fr) 122px 50p
     font-size:12px;
   }
 }
+
+/* Staging: readable compact latest report preview in task rows. */
+.tk .resultbox .tk-latest-report{display:flex;flex-direction:column;gap:3px;min-width:0;width:100%;overflow:hidden}
+.tk .resultbox .tk-latest-report small{display:block;min-width:0;max-width:100%;line-height:1.45;overflow-wrap:normal;word-break:normal}
+.tk .resultbox .tk-latest-date{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px}
+.tk .resultbox .tk-latest-subject{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink);font-weight:600}
+.tk .resultbox .tk-latest-content{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden;overflow-wrap:anywhere;white-space:normal}
