@@ -384,35 +384,41 @@
       <div class="pkghead">
         <div>
           <h3>專題安裝包 <span class="ver">僅 XLeRobot 版</span></h3>
-          <div class="meta"><span class="t">目前版本</span><span>Windows 10／11</span><span>RAR・約 370 MB</span></div>
+          <div class="meta"><span class="t">目前版本</span><span>Windows 10／11</span><span>2026/10/15 更新・壓縮檔大小待確認</span></div>
         </div>
-        <a class="dl" href="https://drive.google.com/file/d/1zNVCxP0fCyPh7KCgdTRClWZCyd7XgncY/view?usp=drive_link" target="_blank" rel="noopener">下載安裝包（Google 雲端）</a>
+        <a class="dl" href="https://drive.google.com/file/d/18h680rAEuu_qYmQ0o24DAFnIzBTaOzgQ/view" target="_blank" rel="noopener">下載安裝包（Google 雲端）</a>
       </div>
       <div class="tbl"><div class="tr h"><span>項目</span><span>內容</span><span>備註</span></div>
         <div class="tr"><span>製作</span><span>劉衍希</span><span></span></div>
-        <div class="tr"><span>版本</span><span>專題安裝包（僅 XLeRobot）</span><span>檔名：專題安裝包(僅Xlerobot).rar</span></div>
-        <div class="tr"><span>時間</span><span>2026-10-05 15:39（UTC+8）</span><span>上傳至雲端資料夾的時間</span></div>
-        <div class="tr"><span>SHA-256</span><span class="mono">130a80856cd0418c1d301972986638ed1b4940f459e6717de7cde390b22e6ea3</span><span>下載後可用來核對檔案是否完整</span></div>
+        <div class="tr"><span>版本</span><span>2026/10/15 更新版（僅 XLeRobot）</span><span>完整壓縮檔檔名待確認</span></div>
+        <div class="tr"><span>時間</span><span>2026-10-15（UTC+8）</span><span>安裝程式及使用說明更新日期</span></div>
+        <div class="tr"><span>安裝程式 SHA-256</span><span class="mono">06d1127c5af608e2ceb9f1d5e96906de06faeb23ed8ab5fdd41ed53c17946ed6</span><span>僅適用「專題安裝.exe」；完整壓縮檔 SHA-256 尚未確認</span></div>
       </div>
-      <p class="muted" style="margin:12px 0 0">檔案約 370 MB，放在 Google 雲端由連結下載，不放在網站內。解壓 RAR 需要 7-Zip 或 WinRAR。</p>
+      <p class="muted" style="margin:12px 0 0">完整安裝包由 Google 雲端連結下載，不存放在網站伺服器。壓縮格式與檔案大小請以雲端實際檔案為準。</p>
     </article>
     <h2 class="sec">安裝包內容</h2>
     <div class="tbl"><div class="tr h"><span>位置</span><span>說明</span><span>備註</span></div>
       <div class="tr"><span class="mono">專題安裝.exe</span><span>一鍵安裝程式（顯示 1/9 到 9/9 進度，約 20–60 分鐘，不需管理員權限）</span><span>無數位簽章，出現警告時按「其他資訊」→「仍要執行」</span></div>
-      <div class="tr"><span class="mono">使用說明.md</span><span>隨身碟擺法、執行步驟、安裝位置</span><span></span></div>
+      <div class="tr"><span class="mono">使用說明.md</span><span>隨身碟擺法、執行步驟、安裝位置、COM 埠偵測與 Rerun 排錯</span><span></span></div>
       <div class="tr"><span class="mono">安裝檔\</span><span>離線安裝檔：Python 3.14.7、Thonny 5.0.0、Miniforge3</span><span>放了就不用上網下載</span></div>
       <div class="tr"><span class="mono">專題\</span><span>XLeRobot-main、lerobot-main、STServo_Python</span><span>沒放時改從 GitHub／PyPI 下載官方版，不一定和改過的版本相同</span></div>
-      <div class="tr"><span class="mono">原始碼\</span><span>install.ps1、xlerobot_launcher.py、installer.nsi</span><span>要改版本時編輯 install.ps1 後用 NSIS 重新編譯</span></div>
+      <div class="tr"><span class="mono">原始碼\</span><span>install.ps1、xlerobot_launcher.py、xle_run.py、installer.nsi</span><span>要改版本時編輯 install.ps1 後用 NSIS 重新編譯</span></div>
     </div>
     <h2 class="sec">會安裝什麼、裝在哪</h2>
     <div class="tbl"><div class="tr h"><span>項目</span><span>位置</span><span></span></div>
       <div class="tr"><span>Python 3.14.7（加入 PATH）</span><span class="mono">%LOCALAPPDATA%\Programs\Python\Python314</span><span></span></div>
       <div class="tr"><span>Thonny 5.0.0</span><span class="mono">%LOCALAPPDATA%\Programs\Thonny</span><span>預設使用 Python 3.14.7</span></div>
       <div class="tr"><span>Miniforge＋Miniforge Prompt</span><span class="mono">%USERPROFILE%\miniforge3</span><span>使用者名稱含中文或空白時改用 C:\miniforge3</span></div>
-      <div class="tr"><span>conda 環境 lerobot</span><span class="mono">miniforge3\envs\lerobot</span><span>Python 3.12、ffmpeg、lerobot[feetech]、pyserial、pynput、pygame、pyinstaller</span></div>
+      <div class="tr"><span>conda 環境 lerobot</span><span class="mono">miniforge3\envs\lerobot</span><span>Python 3.12、ffmpeg、LeRobot [feetech,hardware,viz,pyzmq-dep]、pyserial、pynput、pygame、pyinstaller</span></div>
       <div class="tr"><span>專題程式</span><span class="mono">D:\專題（沒有 D 槽則 C:\專題）</span><span>安裝紀錄：專題\安裝紀錄.txt</span></div>
       <div class="tr"><span>啟動機器.exe、config.json、啟動機器_備用.bat</span><span class="mono">專題\XLeRobotLauncher\</span><span>桌面會建立捷徑</span></div>
     </div>
+    <h2 class="sec">2026/10/15 更新重點</h2>
+    <ul class="prot">
+      <li><b>COM 埠自動偵測：</b>啟動底盤程式前辨識 CH343 舵機轉接器、排除 U2D2 FTDI，並以 1,000,000 baud Ping 舵機 ID 1–20 確認連線；選單按 <code>P</code> 可手動指定 COM 埠或輸入 <code>auto</code> 恢復自動偵測。偵測時舵機須先通電。</li>
+      <li><b>修正 rerun-sdk 依賴：</b>改用 <code>pip install -e ".[feetech,hardware,viz,pyzmq-dep]"</code>，加入視覺化及遠端連線所需依賴。</li>
+      <li><b>Rerun Viewer：</b>啟動底盤程式前先開啟 Viewer；選單按 <code>V</code> 可選 <code>native</code>（預設）、<code>gl</code>、<code>web</code> 或 <code>off</code>，方便在顯示卡限制或虛擬機環境使用。</li>
+    </ul>
     <h2 class="sec">使用步驟</h2>
     <ul class="prot">
       <li>解壓縮到隨身碟或電腦；建議把舊電腦的 <code>D:\專題</code> 整包複製到 <code>專題\</code>。</li>
