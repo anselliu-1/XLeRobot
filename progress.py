@@ -67,6 +67,21 @@ def init():
             c.execute("UPDATE meta SET v=? WHERE k='notify_config'",(json.dumps(cfg),))
             c.execute("INSERT INTO meta(k,v) VALUES('progress_restore_notify_v1','1')")
 
+def notification_time(value):
+    try:return datetime.fromisoformat(value.replace('Z','+00:00')).astimezone(A.TZ).strftime('%Y/%m/%d %H:%M:%S')
+    except (ValueError,TypeError,AttributeError):return value
+
+def notification_detail(detail,show_ids=True):
+    lines=detail.split('\n')
+    match=re.fullmatch(r'(.*?)｜回報 #([0-9]+)(?:[・·]v([0-9]+)|｜第 ([0-9]+) 次回報)',lines[0])
+    if match:
+        action,rid,old_version,version=match.groups()
+        lines[0]=action+'｜'+('回報 #'+rid+'｜' if show_ids else '')+'第 '+(version or old_version)+' 次回報'
+    for index,line in enumerate(lines[:5]):
+        if line.startswith('時間：'):
+            lines[index]='時間：'+notification_time(line[3:]);break
+    return '\n'.join(lines)
+
 def event(c, rid, action, actor, reason='', fid=''):
     now = stamp()
     c.execute('INSERT INTO progress_audit(report_id,action,actor,reason,file_id,created) VALUES(?,?,?,?,?,?)',
@@ -75,7 +90,7 @@ def event(c, rid, action, actor, reason='', fid=''):
     cfg=A.notify_config(c)
     if not cfg.get('enabled') or code not in cfg.get('events',[]): return
     r = c.execute('SELECT * FROM progress_reports WHERE id=?',(rid,)).fetchone()
-    detail = f'{action}｜回報 #{rid}・v{r["version"]}\n{r["subject"]}\n回報人：{r["reporter"]}\n時間：{now}\n'
+    detail = f'{action}｜回報 #{rid}｜第 {r["version"]} 次回報\n{r["subject"]}\n回報人：{r["reporter"]}\n時間：{notification_time(now)}\n'
     detail += ('原因：'+reason if reason else r['content'][:900])
     c.execute('INSERT INTO progress_outbox(id,detail,created,event) VALUES(?,?,?,?)', (uuid.uuid4().hex, detail[:1500], now, code))
 
@@ -101,10 +116,11 @@ def worker():
                     try:
                         with A.LOCK,A.conn() as c:
                             cfg=A.notify_config(c)
+                            show_ids=(c.execute("SELECT v FROM meta WHERE k='progress_notify_show_ids'").fetchone() or {'v':'1'})['v']=='1'
                         if not cfg.get('enabled') or item['event'] not in cfg.get('events',[]): continue
                         domain = os.environ.get('RAILWAY_PUBLIC_DOMAIN','').strip()
                         link = '\nhttps://'+domain+'/#progress' if domain else ''
-                        body = json.dumps({'content': ('XLeRobot｜'+item['detail']+link)[:1900], 'allowed_mentions':{'parse':[]}},ensure_ascii=False).encode()
+                        body = json.dumps({'content': ('XLeRobot｜'+notification_detail(item['detail'],show_ids)+link)[:1900], 'allowed_mentions':{'parse':[]}},ensure_ascii=False).encode()
                         req = urllib.request.Request(webhook, data=body, headers={'Content-Type':'application/json','User-Agent':'XLeRobot-Progress'}, method='POST')
                         with urllib.request.urlopen(req,timeout=15) as response:
                             if response.status not in (200,204): raise RuntimeError('Discord rejected')
@@ -184,7 +200,7 @@ def list_reports(h):
         # Include full histories for matching topics, even if earlier versions do not match.
         roots={r['root_id'] for r in reports if r['id'] in matched}
         items=[r for r in reports if r['root_id'] in roots]
-        return h._send(200,{'items':items,'matched_ids':matched,'reporters':people,'admin':A.is_admin(h),'admin_show_report_ids':(c.execute("SELECT v FROM meta WHERE k='progress_admin_show_ids'").fetchone() or {'v':'1'})['v']=='1' if A.is_admin(h) else False,'show_report_ids':(c.execute("SELECT v FROM meta WHERE k='progress_show_ids'").fetchone() or {'v':'0'})['v']=='1','export_all':(c.execute("SELECT v FROM meta WHERE k='progress_export_all'").fetchone() or {'v':'0'})['v']=='1','audit_all':(c.execute("SELECT v FROM meta WHERE k='progress_audit_all'").fetchone() or {'v':'0'})['v']=='1','trash_count':trash_count})
+        return h._send(200,{'items':items,'matched_ids':matched,'reporters':people,'admin':A.is_admin(h),'admin_show_report_ids':(c.execute("SELECT v FROM meta WHERE k='progress_admin_show_ids'").fetchone() or {'v':'1'})['v']=='1' if A.is_admin(h) else False,'notify_show_report_ids':(c.execute("SELECT v FROM meta WHERE k='progress_notify_show_ids'").fetchone() or {'v':'1'})['v']=='1' if A.is_admin(h) else False,'show_report_ids':(c.execute("SELECT v FROM meta WHERE k='progress_show_ids'").fetchone() or {'v':'0'})['v']=='1','export_all':(c.execute("SELECT v FROM meta WHERE k='progress_export_all'").fetchone() or {'v':'0'})['v']=='1','audit_all':(c.execute("SELECT v FROM meta WHERE k='progress_audit_all'").fetchone() or {'v':'0'})['v']=='1','trash_count':trash_count})
 
 def preview_kind(name,data):
     ext=os.path.splitext(name)[1].lower()
@@ -431,9 +447,10 @@ def route(h,method):
             if not A.is_admin(h): h._send(403,{'error':'需要管理員'})
             else:
                 d=h._body()
-                if not isinstance(d,dict) or not d or any(k not in ('show_report_ids','admin_show_report_ids','export_all','audit_all') or type(v) is not bool for k,v in d.items()):raise ValueError('設定格式錯誤')
+                if not isinstance(d,dict) or not d or any(k not in ('show_report_ids','admin_show_report_ids','notify_show_report_ids','export_all','audit_all') or type(v) is not bool for k,v in d.items()):raise ValueError('設定格式錯誤')
                 with A.LOCK,A.conn() as c:
                     if 'admin_show_report_ids' in d:c.execute("INSERT OR REPLACE INTO meta(k,v) VALUES('progress_admin_show_ids',?)",('1' if d['admin_show_report_ids'] else '0',))
+                    if 'notify_show_report_ids' in d:c.execute("INSERT OR REPLACE INTO meta(k,v) VALUES('progress_notify_show_ids',?)",('1' if d['notify_show_report_ids'] else '0',))
                     if 'show_report_ids' in d:c.execute("INSERT OR REPLACE INTO meta(k,v) VALUES('progress_show_ids',?)",('1' if d['show_report_ids'] else '0',))
                     if 'export_all' in d:c.execute("INSERT OR REPLACE INTO meta(k,v) VALUES('progress_export_all',?)",('1' if d['export_all'] else '0',))
                     if 'audit_all' in d:c.execute("INSERT OR REPLACE INTO meta(k,v) VALUES('progress_audit_all',?)",('1' if d['audit_all'] else '0',))
@@ -464,6 +481,8 @@ def route(h,method):
         print('progress request failed:',type(exc).__name__,flush=True)
         h.close_connection=True; h._send(503,{'error':'儲存服務暫時無法使用，請重新整理確認後再試'})
     return True
+
+
 
 
 

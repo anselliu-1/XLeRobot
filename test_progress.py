@@ -94,7 +94,7 @@ class ProgressTests(unittest.TestCase):
         _,audit,_=self.req(f'/api/progress/{rid}/audit',admin=True)
         self.assertEqual([x['action'] for x in audit['items']],['新增回報','作廢回報','附件移除'])
         with app.conn() as c:
-            self.assertEqual(c.execute('SELECT COUNT(*) FROM progress_outbox WHERE detail LIKE ?',(f'%回報 #{rid}・%',)).fetchone()[0],3)
+            self.assertEqual(c.execute('SELECT COUNT(*) FROM progress_outbox WHERE detail LIKE ?',(f'%回報 #{rid}｜%',)).fetchone()[0],3)
         _,filtered,_=self.req('/api/progress?status=void&reporter='+urllib.parse.quote('測試甲'))
         self.assertIn(rid,filtered['matched_ids']);self.assertNotIn(second,filtered['matched_ids'])
 
@@ -162,15 +162,15 @@ class ProgressTests(unittest.TestCase):
         self.assertEqual(self.req('/api/notifications/config','POST',cfg,True)[0],200)
         first=self.create()[1]['id']
         with app.conn() as c:
-            self.assertFalse(c.execute('SELECT 1 FROM progress_outbox WHERE detail LIKE ?',(f'%回報 #{first}・%',)).fetchone())
+            self.assertFalse(c.execute('SELECT 1 FROM progress_outbox WHERE detail LIKE ?',(f'%回報 #{first}｜%',)).fetchone())
             self.assertTrue(c.execute('SELECT 1 FROM progress_audit WHERE report_id=?',(first,)).fetchone())
         cfg['enabled']=True;cfg['events']=['progress_add']
         self.assertEqual(self.req('/api/notifications/config','POST',cfg,True)[0],200)
         second=self.create()[1]['id']
         third=self.create({'reporter':'甲','subject':'a','content':'接續內容','parent_id':str(second)})[1]['id']
         with app.conn() as c:
-            self.assertEqual(c.execute('SELECT event FROM progress_outbox WHERE detail LIKE ?',(f'%回報 #{second}・%',)).fetchone()[0],'progress_add')
-            self.assertFalse(c.execute('SELECT 1 FROM progress_outbox WHERE detail LIKE ?',(f'%回報 #{third}・%',)).fetchone())
+            self.assertEqual(c.execute('SELECT event FROM progress_outbox WHERE detail LIKE ?',(f'%回報 #{second}｜%',)).fetchone()[0],'progress_add')
+            self.assertFalse(c.execute('SELECT 1 FROM progress_outbox WHERE detail LIKE ?',(f'%回報 #{third}｜%',)).fetchone())
         cfg['enabled']=False
         self.req('/api/notifications/config','POST',cfg,True)
         class StopWorker(BaseException): pass
@@ -199,7 +199,7 @@ class ProgressTests(unittest.TestCase):
             self.assertEqual(c.execute('SELECT status FROM progress_reports WHERE id=?',(rid,)).fetchone()[0],'valid')
             actions=[r[0] for r in c.execute('SELECT action FROM progress_audit WHERE report_id=? ORDER BY id',(rid,))]
             self.assertEqual(actions,['新增回報','作廢回報','附件移除','恢復有效'])
-            self.assertEqual(c.execute('SELECT event FROM progress_outbox WHERE detail LIKE ? ORDER BY created DESC LIMIT 1',(f'%回報 #{rid}・%',)).fetchone()[0],'progress_restore')
+            self.assertEqual(c.execute('SELECT event FROM progress_outbox WHERE detail LIKE ? ORDER BY created DESC LIMIT 1',(f'%回報 #{rid}｜%',)).fetchone()[0],'progress_restore')
         self.assertEqual(self.req('/api/progress-files/'+fid)[0],404)
         self.assertEqual(self.create({'reporter':'甲','subject':'a','content':'接續內容','parent_id':str(rid)})[0],201)
 
@@ -265,4 +265,6 @@ class ProgressTests(unittest.TestCase):
             with app.conn() as c:c.execute("DELETE FROM admin_backup_audit WHERE id IN ('status-success','status-failed')")
 
 if __name__=='__main__': unittest.main()
+
+
 

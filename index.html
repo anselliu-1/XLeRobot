@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css?v=20261020attachments1">
-<link rel="stylesheet" href="progress.css?v=20261020attachments2">
+<link rel="stylesheet" href="progress.css?v=20261020wide1">
 </head>
 <body>
 <a class="skip" href="#main">跳至主要內容</a>
@@ -60,8 +60,8 @@
       <label>主題（必填）<input name="subject" required maxlength="200"></label></div>
       <label>關聯工作項目（選填）<select name="task_id" id="prTask"><option value="">不關聯工作項目</option></select></label>
       <label>回報內容（必填）<textarea name="content" required rows="5" maxlength="10000" placeholder="這次做了什麼、測試結果、遇到的問題與下一步…（上限 10,000 字）"></textarea></label>
-      <label class="pr-file-picker"><span>＋ 加入附件（可分次選取）</span><input name="files" type="file" multiple aria-label="加入附件（可分次選取）"></label><p class="muted pr-upload-hint">可分次加入；送出前可移除清單中的檔案。最多 <strong>20 個檔案</strong>，合計<strong>不得超過 50 MB</strong>。</p><ul id="prUploadList" class="pr-upload-list" aria-label="待送附件清單"></ul>
-      <p class="muted">支援程式、壓縮檔、圖片、影片與文件；支援的格式可預覽，其他檔案可下載。時間由伺服器記錄。送出後不可修改，請確認內容。接續回報不會複製舊附件。</p>
+      <label class="pr-file-picker"><span>＋ 加入附件</span><input name="files" type="file" multiple aria-label="加入附件"></label><p class="muted pr-upload-hint">最多 <strong>20 個檔案</strong>，合計<strong>不得超過 50 MB</strong>。</p><ul id="prUploadList" class="pr-upload-list" aria-label="待送附件清單"></ul>
+      <p class="muted pr-submit-help"><span>附件可預覽或下載，依格式支援。時間由系統記錄。</span><span>送出後不可修改；接續回報不帶入舊附件。</span></p>
       <div class="pr-actions"><button class="btn" type="submit">確認送出回報</button><button class="btn ghost" id="prCancel" type="button">取消</button><span id="prUploadSize" class="muted"></span></div>
       <p id="prMessage" role="status" aria-live="polite"></p>
     </form>
@@ -175,7 +175,7 @@
     <label><input type="checkbox" id="refundView"> 允許組員查看報銷狀態</label><p><label><input type="checkbox" id="refundEdit"> 允許組員修改報銷狀態（需先允許查看）</label></p>
     <button class="btn" id="purchasePermSave">儲存權限設定</button><p class="muted" id="purchasePermMsg"></p></div></details>
     <details class="legacy" id="notifyPanel"><summary>管理員｜Discord 通知設定</summary>
-    <div class="legacy-body"><p class="muted">通知透過 Railway 設定的 DISCORD_WEBHOOK_URL 傳送到 Discord 頻道。</p><p id="progressNotifyStatus" class="muted">進度回報通知狀態：載入中…</p>
+    <div class="legacy-body"><p class="muted">通知透過 Railway 設定的 DISCORD_WEBHOOK_URL 傳送到 Discord 頻道。</p><label><input type="checkbox" id="progressNotifyShowIds" checked> Discord 通知顯示回報編號</label><p class="muted">僅影響之後發送的通知，與網站編號顯示設定分開。已送出的 Discord 訊息不變。</p><p id="progressNotifyShowIdsMsg" role="status"></p><p id="progressNotifyStatus" class="muted">進度回報通知狀態：載入中…</p>
     <label><input type="checkbox" id="notifyEnabled"> 啟用 Discord 通知</label>
     <p><label>寄送方式 <select id="notifyMode"><option value="instant">即時通知</option><option value="digest">10 分鐘合併通知</option></select></label></p>
     <p class="muted">進度回報通知一律即時發送，不受「10 分鐘合併」影響。進度回報事件與其他通知共用總開關，包含恢復有效。關閉時不建立新通知，既有待送通知暫停；重新啟用後補送。</p>
@@ -481,7 +481,7 @@
 <script src="purchases.js?v=20261020approved1"></script>
 <script src="admin-pages.js?v=20261020attachments1"></script>
 <script src="risks-admin.js?v=20261012a"></script>
-<script src="progress.js?v=20261020attachments1"></script>
+<script src="progress.js?v=20261020wide1"></script>
 <script>
 async function loadSiteInfo() {
   try {
@@ -849,6 +849,7 @@ loadSiteInfo();
 
 </script></body>
 </html>
+
 
 
 

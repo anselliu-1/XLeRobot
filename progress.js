@@ -41,13 +41,14 @@
   const showId = () => admin ? adminShowIds : showReportIds;
   const previewable=f=>/\.(png|jpe?g|gif|webp|pdf|mp4|m4v|webm)$/i.test(f.name)||f.size<=1024*1024&&/\.(txt|csv|json|log|md|py|js|ts|c|cpp|h|css|ya?ml|ini|xml)$/i.test(f.name);
   const previewDialog=document.createElement('dialog');previewDialog.className='pr-preview-dialog';previewDialog.setAttribute('aria-label','附件預覽');
-  previewDialog.innerHTML='<div class="pr-preview-head"><strong></strong><button type="button" class="btn ghost">關閉預覽</button></div><div class="pr-preview-body"></div><p class="muted">若瀏覽器不支援此格式或無法顯示，請下載檢視。</p><a class="btn" download>下載原始附件</a>';
+  previewDialog.innerHTML='<div class="pr-preview-head"><strong></strong><div class="pr-preview-actions"><a class="btn ghost" data-preview-open target="_blank" rel="noopener noreferrer">另開分頁</a><a class="btn ghost" data-preview-download download>下載</a><button type="button" class="btn ghost" autofocus>關閉預覽</button></div></div><div class="pr-preview-body"></div>';
   document.body.append(previewDialog);previewDialog.querySelector('button').onclick=()=>previewDialog.close();
   let previewSeq=0;
   previewDialog.addEventListener('close',()=>{previewSeq++;previewDialog.querySelector('.pr-preview-body').replaceChildren();});
   async function previewFile(f){
     const seq=++previewSeq,body=previewDialog.querySelector('.pr-preview-body'),url=f.url+'/preview';body.replaceChildren();
-    previewDialog.querySelector('strong').textContent=f.name;previewDialog.querySelector('a').href=f.url;
+    previewDialog.querySelector('strong').textContent=f.name;previewDialog.querySelector('strong').title=f.name;
+    previewDialog.querySelector('[data-preview-open]').href=url;previewDialog.querySelector('[data-preview-download]').href=f.url;
     if(!previewDialog.open)previewDialog.showModal();
     let media;
     if(/\.(png|jpe?g|gif|webp)$/i.test(f.name)){media=document.createElement('img');media.alt=f.name;}
@@ -58,14 +59,17 @@
     }
     media.onerror=()=>{if(seq===previewSeq)body.textContent='無法預覽此附件，請下載檢視。';};media.src=url;body.append(media);
   }
+  let taskOptionsRequest=0;
   async function loadTasks(){
+    const seq=++taskOptionsRequest;
     try {
-      const d=await api('/api/tasks/options');
-      taskOptions=d.items||[];
+      const d=await api('/api/tasks');if(seq!==taskOptionsRequest)return;
+      taskOptions=(d.tasks||[]).map(t=>({...t,name:t.task})).sort((a,b)=>window.xleTaskCompare?window.xleTaskCompare(a,b):a.n-b.n);
       const sel=$('#prTask'),flt=$('#prTaskFilter');
-      const old=sel.value,oldFilter=flt.value;
+      const old=sel.value,oldFilter=flt.value,oldExport=$('#prExportTask').value;
       const options='<option value="">不關聯工作項目</option>'+taskOptions.map(t=>'<option value="'+esc(t.id)+'">'+esc(t.name)+'</option>').join('');
       $('#prExportTask').innerHTML=taskOptions.map(t=>'<option value="'+esc(t.id)+'">'+esc(t.name)+'</option>').join('');
+      if(taskOptions.some(t=>t.id===oldExport))$('#prExportTask').value=oldExport;
       sel.innerHTML=options; sel.value=old;
       flt.innerHTML='<option value="">全部工作</option><option value="__none">未關聯工作</option>'+taskOptions.map(t=>'<option value="'+esc(t.id)+'">'+esc(t.name)+'</option>').join('');
       flt.value=oldFilter||taskFilter;
@@ -114,6 +118,7 @@
       const snapshot=JSON.stringify(d);
       if(snapshot!==lastSnapshot){
         items=d.items; matched=new Set(d.matched_ids); admin=d.admin; showReportIds=!!d.show_report_ids; adminShowIds=d.admin_show_report_ids!==false; exportAll=!!d.export_all; auditAll=!!d.audit_all;
+        if(notifyIdsToggle && admin && document.activeElement!==notifyIdsToggle)notifyIdsToggle.checked=d.notify_show_report_ids!==false;
         if(adminIdsToggle && admin && document.activeElement!==adminIdsToggle)adminIdsToggle.checked=adminShowIds;
         if(auditPermission && admin && document.activeElement!==auditPermission)auditPermission.checked=auditAll;
         $('#prExportPanel').hidden=!(admin||exportAll);
@@ -313,6 +318,15 @@
     }catch(e){settingsToggle.checked=!settingsToggle.checked;settingsMsg.textContent='儲存失敗：'+e.message;}
     finally{settingsToggle.disabled=false;}
   };
+  const notifyIdsToggle=$('#progressNotifyShowIds'),notifyIdsMsg=$('#progressNotifyShowIdsMsg');
+  if(notifyIdsToggle)notifyIdsToggle.onchange=async()=>{
+    notifyIdsToggle.disabled=true;notifyIdsMsg.textContent='儲存中…';
+    try{await api('/api/progress/settings',{method:'POST',headers:{...headers(),'Content-Type':'application/json'},body:JSON.stringify({notify_show_report_ids:notifyIdsToggle.checked})});notifyIdsMsg.textContent='已儲存';await load();}
+    catch(e){notifyIdsToggle.checked=!notifyIdsToggle.checked;notifyIdsMsg.textContent='儲存失敗：'+e.message;}
+    finally{notifyIdsToggle.disabled=false;}
+  };
+  window.addEventListener('xle-task-order-change',loadTasks);
+  window.addEventListener('xle-before-view-change',e=>{if(e.detail.to==='progress')loadTasks();});
   window.addEventListener('xle-admin-change',load);
   window.addEventListener('storage',e=>{if(e.key==='xle-admin')load();});
   const visible = () => !document.hidden && $('#progress').classList.contains('on');
@@ -371,6 +385,7 @@
   loadTasks();
   if(location.hash==='#progress') $('[data-view="progress"]').click();
 })();
+
 
 
 
