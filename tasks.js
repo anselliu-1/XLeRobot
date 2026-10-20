@@ -35,6 +35,16 @@
     const row=[...document.querySelectorAll('#tkTable .tk[data-id]')].find(r=>r.dataset.id===id);
     const el=row?.querySelector('[data-save-feedback]');if(el)el.innerHTML=stateMarkup(id);
   }
+  function syncCompletionControls(row,value){
+    const date=row.querySelector('[data-completed-date]');
+    if(!date)return;
+    const box=date.closest('.task-completed-controls');
+    if(box.contains(document.activeElement))return;
+    const parts=(value||'').replace(' ','T').split('T'),time=(parts[1]||'00:00').split(':');
+    date.value=parts[0]||'';
+    row.querySelector('[data-completed-hour]').value=time[0]||'00';
+    row.querySelector('[data-completed-minute]').value=time[1]||'00';
+  }
   function saveTask(id,patch){
     taskDrafts.set(id,{...(taskDrafts.get(id)||{}),...patch});
     taskPending++;markTask(id,'saving','儲存中…');
@@ -55,6 +65,7 @@
               if(key==='done')input.checked=!!saved.done;else input.value=(saved.done_date||'').replace(' ','T');
             }
           }
+          if(!('done_date' in draft))syncCompletionControls(row,saved.done_date);
           const label=row.querySelector('.when');if(label)label.textContent=saved.done?'已完成':late(saved)?'已逾期':'進行中';
         }
         markTask(id,'saved','已儲存');taskRenderNeeded=true;
@@ -177,7 +188,7 @@
           <button type="button" class="btn ghost" data-task-add="${esc(t.id)}">新增回報</button>
           ${t.result || (t.attachments||[]).length ? `<details><summary>歷史成果與附件（唯讀）</summary><p>${esc(t.result)}</p>${(t.attachments||[]).map(a=>`<p><a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.original_name)}</a></p>`).join('')}</details>` : ''}
         </div>
-        ${isAdmin ? `<div class="ckc rv"><input class="in dt" type="datetime-local" data-k="done_date" value="${esc(dtIn(t.done_date))}" aria-label="完成時間"></div>
+        ${isAdmin ? `<div class="ckc rv task-completed-controls"><input type="hidden" data-k="done_date" value="${esc(dtIn(t.done_date))}"><input class="in dt" type="date" data-completed-date value="${esc(dtIn(t.done_date).slice(0,10))}" aria-label="完成日期"><div class="task-completed-clock" role="group" aria-label="完成時間（24小時制）"><select class="in" data-completed-hour aria-label="完成小時（00至23）">${Array.from({length:24},(_,i)=>String(i).padStart(2,"0")).map(v=>`<option${v===(dtIn(t.done_date).slice(11,13)||"00")?" selected":""}>${v}</option>`).join("")}</select><span aria-hidden="true">:</span><select class="in" data-completed-minute aria-label="完成分鐘">${Array.from({length:60},(_,i)=>String(i).padStart(2,"0")).map(v=>`<option${v===(dtIn(t.done_date).slice(14,16)||"00")?" selected":""}>${v}</option>`).join("")}</select><span class="task-clock-format">24 時制</span></div></div>
         <button class="del" data-del="${t.id}" title="刪除" aria-label="刪除">×</button>` : ""}
       </div>`).join("") : `<div class="tk empty">${rev ? "沒有符合條件的工作。" : "正在載入共用清單…"}</div>`);
     grow();
@@ -213,6 +224,15 @@
         .then(d=>{apply(d);setSync(true);render();})
         .catch(err=>{alert("附件上傳失敗："+err.message);setSync(false);})
         .finally(()=>{pending=false;}); return;
+    }
+    if (el.matches('[data-completed-date],[data-completed-hour],[data-completed-minute]')) {
+      if(!isAdmin)return;
+      const date=row.querySelector('[data-completed-date]');
+      if(date.value&&!date.checkValidity()){date.reportValidity();return;}
+      if(!date.value&& !el.matches('[data-completed-date]'))return;
+      const value=date.value?date.value+'T'+row.querySelector('[data-completed-hour]').value+':'+row.querySelector('[data-completed-minute]').value:'';
+      row.querySelector('[data-k="done_date"]').value=value;
+      saveTask(row.dataset.id,{done_date:value});return;
     }
     if (el.classList.contains("w")) {
       const who = joinP([...el.closest(".whos").querySelectorAll("input")].flatMap(i => people(i.value)));

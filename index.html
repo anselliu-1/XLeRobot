@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261020approved2">
+<link rel="stylesheet" href="style.css?v=20261020datetime1">
 <link rel="stylesheet" href="progress.css?v=20261019b">
 </head>
 <body>
@@ -59,9 +59,9 @@
       <div class="pr-fields"><label>回報人（必填）<input name="reporter" required maxlength="80" autocomplete="name"></label>
       <label>主題（必填）<input name="subject" required maxlength="200"></label></div>
       <label>關聯工作項目（選填）<select name="task_id" id="prTask"><option value="">不關聯工作項目</option></select></label>
-      <label>回報內容（必填）<textarea name="content" required rows="5" maxlength="10000" placeholder="這次做了什麼、測試結果、遇到的問題與下一步…"></textarea></label>
+      <label>回報內容（必填）<textarea name="content" required rows="5" maxlength="10000" placeholder="這次做了什麼、測試結果、遇到的問題與下一步…（上限 10,000 字）"></textarea></label>
       <label>上傳附件（選填）<input name="files" type="file" multiple></label><p class="muted pr-upload-hint">每次回報最多可上傳 <strong>20 個檔案</strong>，所有附件的<strong>總大小不得超過 50 MB</strong>。</p>
-      <p class="muted">支援程式、壓縮檔、圖片、影片與文件；附件只供下載。時間由伺服器記錄（台灣 UTC+8）。送出後不可修改，請確認內容。接續回報不會複製舊附件。</p>
+      <p class="muted">支援程式、壓縮檔、圖片、影片與文件；附件只供下載。時間由伺服器記錄。送出後不可修改，請確認內容。接續回報不會複製舊附件。</p>
       <div class="pr-actions"><button class="btn" type="submit">確認送出回報</button><button class="btn ghost" id="prCancel" type="button">取消</button><span id="prUploadSize" class="muted"></span></div>
       <p id="prMessage" role="status" aria-live="polite"></p>
     </form>
@@ -466,7 +466,7 @@
 <script src="data.js?v=20261007a"></script>
 <script src="app.js?v=20261019g"></script>
 <script src="nav-scroll.js?v=20261019nav1"></script>
-<script src="tasks.js?v=20261020approved1"></script>
+<script src="tasks.js?v=20261020datetime1"></script>
 <script src="admin-files.js?v=20261019fix1"></script>
 <script src="purchases.js?v=20261020approved1"></script>
 <script src="admin-pages.js?v=20261019fix1"></script>

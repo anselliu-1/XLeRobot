@@ -710,3 +710,12 @@ body.tk-admin .tk{grid-template-columns:84px 1.8fr minmax(168px,1.1fr) 122px 50p
 #buyCleanup p{overflow-wrap:anywhere}
 
 
+
+/* Completion date and explicit 24-hour time use separate rows to avoid native locale clipping. */
+body.tk-admin #tkTable .tk .task-completed-controls{gap:5px;min-width:0;box-sizing:border-box}
+body.tk-admin #tkTable .tk .task-completed-controls .dt{box-sizing:border-box;min-width:0;min-height:32px;width:100%;padding:5px 6px;font-size:12px;font-variant-numeric:tabular-nums}
+body.tk-admin #tkTable .tk .task-completed-controls .dt::-webkit-calendar-picker-indicator{position:static;flex:0 0 16px;width:16px;height:16px;margin-left:4px;padding:0}
+.task-completed-clock{display:flex;align-items:center;gap:3px;min-width:0;font-variant-numeric:tabular-nums}
+.task-completed-clock .in{flex:0 0 48px;box-sizing:border-box;min-width:0;width:48px;min-height:30px;padding:3px;font-size:12px}
+.task-clock-format{font-size:10px;color:var(--muted);white-space:nowrap}
+@media(max-width:900px){body.tk-admin #tkTable .tk .task-completed-controls{flex-direction:column;align-items:flex-start}body.tk-admin #tkTable .tk .task-completed-controls .dt{max-width:180px}}
