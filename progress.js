@@ -4,19 +4,54 @@
   const headers = () => ({'X-Admin-Key':localStorage.getItem('xle-admin') || ''});
   const fileSize = n => n<1024 ? n+' bytes' : n<1024*1024 ? (n/1024).toFixed(1)+' KB' : (n/1024/1024).toFixed(2)+' MB';
   const syncMessage = (text,state='') => {const el=$('#prSync');if(!el)return;const span=el.querySelector('span');if(span&&span.textContent!==text)span.textContent=text;el.className='sync '+(state==='connected'?'ok':state==='error'?'bad':'');};
-  let items = [], matched = new Set(), admin = false, showReportIds = false, exportAll = false, auditAll = false, request = 0, timer;
+  let items = [], matched = new Set(), admin = false, showReportIds = false, adminShowIds=true, exportAll = false, auditAll = false, request = 0, timer;
   let pendingLoads = 0, lastSnapshot = '', taskFilter = '';
   let taskOptions = [];
   const draftFields = () => JSON.stringify(['reporter','subject','content'].map(k=>form.elements[k].value.trim()));
-  let submittedFields = draftFields(), skipLeaveOnce=false;
-  const hasDraft = () => !form.hidden && (draftFields()!==submittedFields || form.elements.files.files.length>0);
+  let submittedFields = draftFields(), skipLeaveOnce=false, queuedFiles=[], uploadBusy=false;
+  const fileKey=f=>[f.name,f.size,f.lastModified,f.type].join('\u0000');
+  let uploadPolicy=null;
+  const extension=name=>{const i=name.lastIndexOf('.');return i>0?name.slice(i).toLowerCase():'';};
+  function attachmentState(files){
+    const total=files.reduce((n,f)=>n+f.size,0),errors=[],perFile=files.map(()=>[]);
+    if(!uploadPolicy)return {total,errors:['尚未取得附件規則，請稍候；若持續無法載入，請重新整理。'],perFile};
+    const {max_files:count,max_total_bytes:bytes,allowed_extensions:allowed}=uploadPolicy;
+    if(files.length>count)errors.push(`附件共 ${files.length} 個，最多 ${count} 個，超出 ${files.length-count} 個。`);
+    if(total>bytes)errors.push(`附件合計 ${fileSize(total)}，上限 ${fileSize(bytes)}，超出 ${fileSize(total-bytes)}。`);
+    files.forEach((f,i)=>{
+      if(f.size>bytes)perFile[i].push('單一檔案已超過 '+fileSize(bytes)+'。');
+      const ext=extension(f.name);
+      if(!allowed.includes(ext))perFile[i].push('不支援上傳格式：'+(ext||'無副檔名')+'。');
+    });
+    if(perFile.some(e=>e.length))errors.push('請移除清單中標示問題的附件後再送出。');
+    return {total,errors,perFile};
+  }
+  function renderQueuedFiles(){
+    const state=attachmentState(queuedFiles);
+    $('#prUploadList').innerHTML=queuedFiles.map((f,i)=>`<li class="${state.perFile[i].length?'pr-file-invalid':''}"><span>${esc(f.name)}</span><small class="muted">${fileSize(f.size)}</small><button type="button" class="btn ghost" data-unqueue="${i}" ${uploadBusy?'disabled':''} aria-label="移除待送附件 ${esc(f.name)}">移除</button>${state.perFile[i].length?`<small class="pr-file-error">${esc(state.perFile[i].join(' '))}</small>`:''}</li>`).join('');
+    $('#prUploadSize').textContent=queuedFiles.length?`已選擇 ${queuedFiles.length}${uploadPolicy?' / '+uploadPolicy.max_files:''} 個檔案，合計 ${fileSize(state.total)}${uploadPolicy?' / '+fileSize(uploadPolicy.max_total_bytes):''}`:'';
+    $('#prUploadErrors').textContent=state.errors.join('\n');
+    form.querySelector('[type=submit]').disabled=uploadBusy||state.errors.length>0;
+  }
+  async function loadUploadPolicy(){
+    renderQueuedFiles();
+    try{
+      const p=await api('/api/progress/upload-policy');
+      if(!Array.isArray(p.allowed_extensions)||!p.allowed_extensions.every(x=>typeof x==='string')||!Number.isInteger(p.max_files)||p.max_files<=0||!Number.isSafeInteger(p.max_total_bytes)||p.max_total_bytes<=0)throw Error('無效附件規則');
+      uploadPolicy=p;
+      $('#prUploadHint').textContent=`最多 ${p.max_files} 個檔案，合計不得超過 ${fileSize(p.max_total_bytes)}。`;
+    }catch(e){console.warn('附件規則載入失敗',e);setTimeout(loadUploadPolicy,5000);}
+    renderQueuedFiles();
+  }
+  const hasDraft = () => !form.hidden && (draftFields()!==submittedFields || queuedFiles.length>0);
   const mayLeave = async () => !hasDraft() || !!(await xleDialog({title:'尚未送出的回報',message:'目前填寫的內容與附件不會自動儲存。確定放棄並離開嗎？',danger:true,label:'放棄草稿'}));
   const showForm = () => {form.hidden=false;$('#prNew').hidden=true;};
   const hideForm = () => {form.hidden=true;$('#prNew').hidden=false;};
-  const resetForm = () => {form.reset();cancel();submittedFields=draftFields();$('#prUploadSize').textContent='';hideForm();};
+  const resetForm = () => {form.reset();cancel();queuedFiles=[];renderQueuedFiles();submittedFields=draftFields();hideForm();};
   window.addEventListener('beforeunload',e=>{if(hasDraft()){e.preventDefault();e.returnValue='';}});
   window.addEventListener('xle-before-view-change',e=>{
     if(e.detail.from!=='progress'||e.detail.to==='progress')return;
+    if(uploadBusy){e.preventDefault();$('#prMessage').textContent='正在確認或送出回報，請完成後再切換分頁。';return;}
     if(skipLeaveOnce){skipLeaveOnce=false;return;}
     if(!hasDraft()){hideForm();return;}
     e.preventDefault();
@@ -32,15 +67,23 @@
     if(!response.ok) throw Error(data.error || '操作失敗');
     return data;
   }
-  const showId = () => admin || showReportIds;
+  const showId = () => admin ? adminShowIds : showReportIds;
+  function attachmentMarkup(f,r){
+    if(f.removed_at)return `<li><span>${esc(f.name)}（已移除：${esc(f.reason)}）</span></li>`;
+    const name=f.preview_url?`<a href="${esc(f.preview_url)}" target="_blank" rel="noopener noreferrer" title="在新分頁預覽">${esc(f.name)} <span aria-hidden="true">↗</span></a>`:`<span>${esc(f.name)}</span> <small class="muted">僅供下載</small>`;
+    return `<li><div class="pr-file-info">${name}<small class="muted pr-file-size">${fileSize(f.size)}</small></div><div class="pr-file-actions"><a class="btn ghost" href="${esc(f.url)}" download>下載</a>${admin?`<button class="btn ghost" data-remove="${esc(f.id)}" data-report="${r.id}">移除附件</button>`:''}</div></li>`;
+  }
+  let taskOptionsRequest=0;
   async function loadTasks(){
+    const seq=++taskOptionsRequest;
     try {
-      const d=await api('/api/tasks/options');
-      taskOptions=d.items||[];
+      const d=await api('/api/tasks');if(seq!==taskOptionsRequest)return;
+      taskOptions=(d.tasks||[]).map(t=>({...t,name:t.task})).sort((a,b)=>window.xleTaskCompare?window.xleTaskCompare(a,b):a.n-b.n);
       const sel=$('#prTask'),flt=$('#prTaskFilter');
-      const old=sel.value,oldFilter=flt.value;
+      const old=sel.value,oldFilter=flt.value,oldExport=$('#prExportTask').value;
       const options='<option value="">不關聯工作項目</option>'+taskOptions.map(t=>'<option value="'+esc(t.id)+'">'+esc(t.name)+'</option>').join('');
       $('#prExportTask').innerHTML=taskOptions.map(t=>'<option value="'+esc(t.id)+'">'+esc(t.name)+'</option>').join('');
+      if(taskOptions.some(t=>t.id===oldExport))$('#prExportTask').value=oldExport;
       sel.innerHTML=options; sel.value=old;
       flt.innerHTML='<option value="">全部工作</option><option value="__none">未關聯工作</option>'+taskOptions.map(t=>'<option value="'+esc(t.id)+'">'+esc(t.name)+'</option>').join('');
       flt.value=oldFilter||taskFilter;
@@ -51,7 +94,7 @@
     return `<article class="blk pr-report ${r.status==='void'?'pr-void':''}" id="report-${r.id}">
       <div class="pr-report-head"><div><h3>${esc(r.subject)} · 第 ${r.version} 次回報</h3><p class="muted">${esc(date(r.created))}${r.parent_id?' · 接續第 '+r.parent_version+' 次回報':''}${showId()?' · 回報編號 #'+r.id:''}</p><p class="muted">回報人：${esc(r.reporter)}　｜　關聯工作：${esc(r.task_display||'未關聯')}</p></div><span class="tag">${r.status==='valid'?'有效':'已作廢'}</span></div>
       <div class="pr-report-section"><h4>回報內容</h4><div class="pr-content">${esc(r.content)||'（無文字內容）'}</div>${r.status==='void'? `<p class="pr-reason">作廢原因：${esc(r.void_reason)}<br>${esc(date(r.void_at))}</p>`:''}</div>
-      <div class="pr-report-section"><h4>附件（${files.length} 個）</h4><ul class="pr-files">${files.map(f=>`<li>${f.removed_at?`<span>${esc(f.name)}（已移除：${esc(f.reason)}）</span>`:`<a href="${f.url}">${esc(f.name)}</a><span class="muted">${fileSize(f.size)}</span>${admin?`<button class="btn ghost" data-remove="${f.id}" data-report="${r.id}">移除附件</button>`:''}`}</li>`).join('')||'<li class="muted">沒有附件</li>'}</ul></div>
+      <div class="pr-report-section"><h4>附件（${files.length} 個）</h4><ul class="pr-files">${files.map(f=>attachmentMarkup(f,r)).join('')||'<li class="muted">沒有附件</li>'}</ul></div>
       <div class="pr-report-section"><h4>回報操作</h4><div class="pr-actions">
       ${r.status==='valid'?`<button class="btn ghost" data-continue="${r.id}">接續回報</button>`:''}
       ${admin?`<button class="btn ghost" data-relink="${r.id}">修正工作關聯</button>`:''}
@@ -88,7 +131,9 @@
       if(seq!==request)return;
       const snapshot=JSON.stringify(d);
       if(snapshot!==lastSnapshot){
-        items=d.items; matched=new Set(d.matched_ids); admin=d.admin; showReportIds=!!d.show_report_ids; exportAll=!!d.export_all; auditAll=!!d.audit_all;
+        items=d.items; matched=new Set(d.matched_ids); admin=d.admin; showReportIds=!!d.show_report_ids; adminShowIds=d.admin_show_report_ids!==false; exportAll=!!d.export_all; auditAll=!!d.audit_all;
+        if(notifyIdsToggle && admin && document.activeElement!==notifyIdsToggle)notifyIdsToggle.checked=d.notify_show_report_ids!==false;
+        if(adminIdsToggle && admin && document.activeElement!==adminIdsToggle)adminIdsToggle.checked=adminShowIds;
         if(auditPermission && admin && document.activeElement!==auditPermission)auditPermission.checked=auditAll;
         $('#prExportPanel').hidden=!(admin||exportAll);
         $('#prTrashOpen').hidden=!admin;
@@ -112,31 +157,31 @@
   }
   $('#prCancel').onclick=async()=>{if(await mayLeave())resetForm();};
   form.elements.files.onchange=()=>{
-    const files=[...form.elements.files.files],size=files.reduce((n,f)=>n+f.size,0);
-    $('#prUploadSize').textContent=`已選擇 ${files.length} / 20 個檔案，合計 ${(size/1024/1024).toFixed(2)} / 50 MB`;
+    if(uploadBusy)return;
+    const added=[...form.elements.files.files],merged=[...queuedFiles],keys=new Set(merged.map(fileKey));let duplicates=0;
+    for(const file of added){if(keys.has(fileKey(file))){duplicates++;continue;}keys.add(fileKey(file));merged.push(file);}
+    form.elements.files.value='';
+    queuedFiles=merged;renderQueuedFiles();$('#prMessage').textContent=duplicates?'已略過 '+duplicates+' 個重複檔案。':'';
   };
+  $('#prUploadList').onclick=e=>{const b=e.target.closest('[data-unqueue]');if(!b||uploadBusy)return;queuedFiles.splice(Number(b.dataset.unqueue),1);renderQueuedFiles();};
+
   form.onsubmit=async e=>{
-    e.preventDefault(); const button=form.querySelector('[type=submit]');
-    const files=[...form.elements.files.files];
-    if(files.length>20 || files.reduce((n,f)=>n+f.size,0)>50*1024*1024){$('#prMessage').textContent='每筆最多 20 個附件，合計上限 50MB';return;}
-    if(!form.elements.content.value.trim()){ $('#prMessage').textContent='請填寫回報內容';form.elements.content.focus();return; }
-    const linked=taskOptions.find(t=>t.id===form.elements.task_id.value);
-    button.disabled=true;
-    try{
-      const size=files.reduce((n,f)=>n+f.size,0);
-      const confirmed=await xleDialog({title:'確認送出進度回報',message:'回報人：'+form.elements.reporter.value+'\n回報主題：'+form.elements.subject.value+'\n關聯工作：'+(linked?linked.name:'未關聯工作')+'\n\n回報內容：\n'+form.elements.content.value+'\n\n附件：'+files.length+' 個，合計 '+fileSize(size)+'\n送出後無法修改原始內容，後續請使用接續回報。',label:'確認送出'});
-      if(!confirmed)return;
-    }catch(e){$('#prMessage').textContent='無法開啟確認視窗：'+e.message;return;}
-    finally{button.disabled=false;}
-    const body=new FormData(form);
+    e.preventDefault();if(uploadBusy)return;
+    const files=[...queuedFiles],button=form.querySelector('[type=submit]');
+    if(attachmentState(files).errors.length){renderQueuedFiles();return;}
+    if(!form.elements.content.value.trim()){form.elements.content.focus();return;}
+    const body=new FormData(form);body.delete('files');files.forEach(f=>body.append('files',f,f.name));
     if(form.elements.parent_id.value)body.set('task_id',form.elements.task_id.value);
-    button.disabled=true; $('#prMessage').textContent='上傳並儲存中，請勿重複送出…';
-    try {
-      const d=await api('/api/progress',{method:'POST',body});
-      resetForm();
-      $('#prMessage').textContent=`已送出第 ${d.version} 次回報${showId()?'（#'+d.id+'）':''}`; await load();
-    } catch(e) {$('#prMessage').textContent=e.message+'；若連線中斷，請先重新整理確認是否已建立，避免重複送出。';}
-    finally {button.disabled=false;}
+    const disabledBefore=[...form.elements].map(el=>[el,el.disabled]),linked=taskOptions.find(t=>t.id===form.elements.task_id.value);
+    uploadBusy=true;disabledBefore.forEach(([el])=>el.disabled=true);renderQueuedFiles();let sent=false;
+    try{
+      const confirmed=await xleDialog({title:'確認送出進度回報',message:'回報人：'+body.get('reporter')+'\n主題：'+body.get('subject')+'\n關聯工作：'+(linked?.name||'未關聯')+'\n\n'+body.get('content')+'\n\n'+(files.length?'附件：'+files.length+' 個，合計 '+fileSize(attachmentState(files).total)+' / '+fileSize(uploadPolicy.max_total_bytes)+'\n'+files.map(f=>f.name+'（'+fileSize(f.size)+'）').join('\n'):'附件：無')+'\n\n送出後不可修改。',label:'確認送出'});
+      if(!confirmed)return;
+      $('#prMessage').textContent='上傳並儲存中，請勿重複送出…';
+      const d=await api('/api/progress',{method:'POST',body});sent=true;
+      $('#prMessage').textContent='已送出第 '+d.version+' 次回報'+(showId()?'（#'+d.id+'）':'');await load();
+    }catch(e){$('#prMessage').textContent=e.message+'；若連線中斷，請先確認是否已建立，避免重複送出。';}
+    finally{disabledBefore.forEach(([el,value])=>el.disabled=value);uploadBusy=false;button.disabled=false;if(sent)resetForm();else renderQueuedFiles();}
   };
   $('#prItems').onclick=async e=>{
     const b=e.target.closest('button'); if(!b)return;
@@ -270,6 +315,13 @@
     finally{auditPermission.disabled=false;}
   };
   const settingsToggle=$('#progressShowIds'),settingsMsg=$('#progressShowIdsMsg');
+  const adminIdsToggle=$('#progressAdminShowIds'),adminIdsMsg=$('#progressAdminShowIdsMsg');
+  if(adminIdsToggle)adminIdsToggle.onchange=async()=>{
+    adminIdsToggle.disabled=true;adminIdsMsg.textContent='儲存中…';
+    try{await api('/api/progress/settings',{method:'POST',headers:{...headers(),'Content-Type':'application/json'},body:JSON.stringify({admin_show_report_ids:adminIdsToggle.checked})});adminIdsMsg.textContent='已儲存';await load();}
+    catch(e){adminIdsToggle.checked=!adminIdsToggle.checked;adminIdsMsg.textContent='儲存失敗：'+e.message;}
+    finally{adminIdsToggle.disabled=false;}
+  };
   if(settingsToggle)settingsToggle.onchange=async()=>{
     settingsToggle.disabled=true;settingsMsg.textContent='儲存中…';
     try{
@@ -278,6 +330,15 @@
     }catch(e){settingsToggle.checked=!settingsToggle.checked;settingsMsg.textContent='儲存失敗：'+e.message;}
     finally{settingsToggle.disabled=false;}
   };
+  const notifyIdsToggle=$('#progressNotifyShowIds'),notifyIdsMsg=$('#progressNotifyShowIdsMsg');
+  if(notifyIdsToggle)notifyIdsToggle.onchange=async()=>{
+    notifyIdsToggle.disabled=true;notifyIdsMsg.textContent='儲存中…';
+    try{await api('/api/progress/settings',{method:'POST',headers:{...headers(),'Content-Type':'application/json'},body:JSON.stringify({notify_show_report_ids:notifyIdsToggle.checked})});notifyIdsMsg.textContent='已儲存';await load();}
+    catch(e){notifyIdsToggle.checked=!notifyIdsToggle.checked;notifyIdsMsg.textContent='儲存失敗：'+e.message;}
+    finally{notifyIdsToggle.disabled=false;}
+  };
+  window.addEventListener('xle-task-order-change',loadTasks);
+  window.addEventListener('xle-before-view-change',e=>{if(e.detail.to==='progress')loadTasks();});
   window.addEventListener('xle-admin-change',load);
   window.addEventListener('storage',e=>{if(e.key==='xle-admin')load();});
   const visible = () => !document.hidden && $('#progress').classList.contains('on');
@@ -333,7 +394,12 @@
     sync();
   }
   document.querySelectorAll('#progress select').forEach(setupCustomSelect);
+  loadUploadPolicy();
   loadTasks();
   if(location.hash==='#progress') $('[data-view="progress"]').click();
 })();
+
+
+
+
 

@@ -13,3 +13,28 @@
 .pr-void{border-style:dashed}.pr-reason{border-left:3px solid #b76e34;padding:12px;background:#b76e3412;overflow-wrap:anywhere}
 .pr-audit{font-size:.85rem;overflow-wrap:anywhere}.pr-audit:not(:empty){margin-top:18px;border-top:1px solid var(--line,#8886)}
 @media(max-width:650px){.pr-fields{grid-template-columns:1fr}.pr-report{padding:14px}.pr-filters{display:grid;grid-template-columns:1fr 1fr}.pr-filters label:first-child{grid-column:1/-1;min-width:0}.pr-filters label{min-width:0}}
+
+
+.pr-upload-list{list-style:none;padding:0;margin:12px 0}
+.pr-file-picker{position:relative;width:max-content;max-width:100%;padding:10px 14px;border:1px solid var(--line);border-radius:8px;background:var(--surface);cursor:pointer;box-sizing:border-box}
+#progress .pr-file-picker input[type=file]{position:absolute;inset:0;opacity:0;width:100%;height:100%;padding:0;cursor:pointer}
+.pr-file-picker:focus-within{outline:2px solid var(--accent);outline-offset:3px}
+.pr-upload-list li{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--line)}
+.pr-upload-list li>span{overflow-wrap:anywhere}
+
+.pr-files{list-style:none;padding:0}
+.pr-files li{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 0;border-bottom:1px solid var(--line)}
+.pr-file-info{min-width:0;overflow-wrap:anywhere}.pr-file-size{display:block;margin-top:6px}
+.pr-file-actions{display:flex;gap:8px;flex-shrink:0;flex-wrap:wrap}
+.pr-file-error{color:var(--c,#eb8b82);white-space:pre-line;line-height:1.6;overflow-wrap:anywhere}
+.pr-upload-list .pr-file-error{grid-column:1/-1}
+.pr-file-invalid{border-left:3px solid var(--c,#eb8b82);padding-left:10px!important}
+#prForm .pr-submit-help{margin:16px 0;line-height:1.7}
+#prForm .pr-submit-help span{display:block}
+@media(max-width:600px){
+ .pr-upload-list li{grid-template-columns:minmax(0,1fr) auto}
+ .pr-upload-list li>small.muted{grid-row:2}
+ .pr-upload-list li button{grid-column:2;grid-row:1/3}
+ .pr-files li{align-items:flex-start;flex-wrap:wrap}
+ .pr-file-info{flex:1 1 180px}.pr-file-actions{margin-left:auto}
+}

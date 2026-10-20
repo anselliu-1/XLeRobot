@@ -220,6 +220,12 @@ SOFTWARE.
   const fin = t => !!t.done;
   const late = t => !t.done && t.due && t.due < today();
   const PRI = { "高": 0, "中": 1, "低": 2 };
+  window.xleTaskCompare=(a,b,mode=window.xleTaskSort||'due')=>{
+    const state=Number(!!a.done)-Number(!!b.done);if(state)return state;
+    if(a.done&&b.done)return String(b.done_date||'').replace('T',' ').localeCompare(String(a.done_date||'').replace('T',' ')) || (b.n-a.n);
+    const due=(a.due||'9999').localeCompare(b.due||'9999');
+    return (mode==='pri'?(PRI[a.pri]-PRI[b.pri])||due:mode==='who'?(a.who||'\uffff').localeCompare(b.who||'\uffff','zh-Hant')||due:mode==='add'?a.n-b.n:due||(PRI[a.pri]-PRI[b.pri])) || a.n-b.n;
+  };
   const dtIn = v => (v || "").replace(" ", "T");
   const shortDT = v => v ? v.slice(5).replace("-", "/") : "";
 
@@ -249,10 +255,7 @@ SOFTWARE.
       (filter === "all" || (filter === "todo" && !fin(t)) || (filter === "done" && fin(t)) || (filter === "late" && late(t))) &&
       (!whoF || (whoF === "__none" ? !people(t.who).length : people(t.who).includes(whoF))));
     const byDue = (a, b) => (a.due || "9999").localeCompare(b.due || "9999");
-    list.sort((a, b) => (fin(a) - fin(b)) || (
-      sortBy === "pri" ? (PRI[a.pri] - PRI[b.pri]) || byDue(a, b) :
-      sortBy === "who" ? (a.who || "\uffff").localeCompare(b.who || "\uffff", "zh-Hant") || byDue(a, b) :
-      sortBy === "add" ? (a.n - b.n) : byDue(a, b) || (PRI[a.pri] - PRI[b.pri])));
+    list.sort((a,b)=>window.xleTaskCompare(a,b,sortBy));
 
     const ro = isAdmin ? "" : "disabled";
     const canComplete = isAdmin || tasks.some(t=>t.member_completion_allowed);
@@ -260,11 +263,11 @@ SOFTWARE.
     $("#tkTable").innerHTML = head + (list.length ? list.map(t => `
       <div class="tk ${t.done ? "rep" : ""} ${isAdmin && t.done ? "done" : ""} ${late(t) ? "late" : ""}" data-id="${t.id}">
         <div class="ckc"><label class="ck"><input type="checkbox" data-k="done" ${t.done ? "checked" : ""} ${canComplete?"":"disabled"} aria-label="工作主題完成"></label><span class="when">${t.done ? "已完成" : late(t) ? "已逾期" : "進行中"}</span><div class="task-save-feedback" data-save-feedback>${isAdmin||saveStates.has(t.id)?stateMarkup(t.id):""}</div></div>
-        <textarea class="in task" rows="1" ${ro} data-k="task" aria-label="工作內容">${esc(t.task)}</textarea>
+        <label class="tk-cell"><span class="tk-mobile-label">工作主題</span><textarea class="in task" rows="1" ${ro} data-k="task" aria-label="工作內容">${esc(t.task)}</textarea></label>
         <div class="whos" data-k2="who">${(() => { const p = people(t.who).slice(0, 4); const n = isAdmin ? Math.min(4, p.length + 1) : Math.max(1, p.length); return Array.from({ length: n }, (_, i) => `<span class="who-control"><input class="in w" ${ro} value="${esc(p[i] || "")}" list="whoList" placeholder="${i ? (isAdmin ? "＋負責者" : "") : "未指派"}" aria-label="負責者 ${i + 1}">${isAdmin?'<button type="button" class="who-picker" aria-label="選擇負責者"><svg aria-hidden="true" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></button>':''}</span>`).join(""); })()}</div>
-        <input class="in" type="date" ${ro} data-k="due" value="${esc(t.due)}" aria-label="截止">
-        <select class="in pri p${PRI[t.pri]}" ${ro} data-k="pri" aria-label="優先級">${["高", "中", "低"].map(p => `<option${p === t.pri ? " selected" : ""}>${p}</option>`).join("")}</select>
-        <textarea class="in" rows="1" ${ro} data-k="note" placeholder="—" aria-label="目標" maxlength="10000" title="目標上限 10,000 字">${esc(t.note)}</textarea>
+        <label class="tk-cell"><span class="tk-mobile-label">截止日期</span><input class="in" type="date" ${ro} data-k="due" value="${esc(t.due)}" aria-label="截止"></label>
+        <label class="tk-cell"><span class="tk-mobile-label">優先級</span><select class="in pri p${PRI[t.pri]}" ${ro} data-k="pri" aria-label="優先級">${["高", "中", "低"].map(p => `<option${p === t.pri ? " selected" : ""}>${p}</option>`).join("")}</select></label>
+        <label class="tk-cell"><span class="tk-mobile-label">目標</span><textarea class="in" rows="1" ${ro} data-k="note" placeholder="—" aria-label="目標" maxlength="10000" title="目標上限 10,000 字">${esc(t.note)}</textarea></label>
         <div class="resultbox">
           <button type="button" class="btn ghost" data-task-reports="${esc(t.id)}">查看回報（${t.report_count||0}）</button>
           ${t.latest_report ? `<div class="tk-latest-report"><small class="tk-latest-label">最近回報</small><small class="tk-latest-date"><span>${esc(t.latest_report.created.slice(0,10).replaceAll("-","/"))}</span><span>${esc(t.latest_report.created.slice(11,16))}</span></small><div class="tk-latest-field"><small class="tk-latest-field-label">主題</small><small class="tk-latest-subject" title="${esc(t.latest_report.subject)}">${esc(t.latest_report.subject)}</small></div><div class="tk-latest-field"><small class="tk-latest-field-label">內容</small><small class="tk-latest-content" title="${esc(t.latest_report.content.slice(0,300))}">${esc(t.latest_report.content.slice(0,90))}</small></div></div>` : '<small>尚無關聯回報</small>'}
@@ -369,7 +372,7 @@ SOFTWARE.
     filter = b.dataset.f; document.querySelectorAll("#tkFilter button").forEach(x => x.classList.toggle("on", x === b)); render();
   });
   $("#tkWho").addEventListener("change", e => { whoF = e.target.value; render(); });
-  $("#tkSort").addEventListener("change", e => { sortBy = e.target.value; render(); });
+  $("#tkSort").addEventListener("change", e => { sortBy = e.target.value;window.xleTaskSort=sortBy;render();window.dispatchEvent(new Event('xle-task-order-change')); });
 
   // 匯出／匯入
   const stamp = () => { const d = new Date(); const p = n => String(n).padStart(2, "0"); return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`; };
@@ -411,5 +414,6 @@ SOFTWARE.
   fetch(API + "/api/tasks", { headers: hdr(), cache: "no-store" }).then(r => { if (!r.ok) throw 0; return r.json(); })
     .then(d => { apply(d); render(); setSync(true); }).catch(() => setSync(false)).finally(() => setTimeout(poll, 3000));
 })();
+
 
 

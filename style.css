@@ -736,3 +736,61 @@ body.tk-admin .tk{grid-template-columns:84px 1.8fr minmax(168px,1.1fr) 122px 50p
 .task-completion-calendar .flatpickr-time{border-color:var(--line)}
 .task-picker-actions{display:flex;justify-content:space-between;padding:8px;border-top:1px solid var(--line)}
 body.tk-admin #tkTable .tk .task-completed-single{box-sizing:border-box;min-height:32px;font-size:12px;font-variant-numeric:tabular-nums;padding:5px 4px;width:100%;min-width:0;cursor:pointer}
+
+
+/* Compact task cards replace horizontal tables in narrow windows. */
+.tk-cell{display:contents}.tk-mobile-label{display:none}
+.restore-preview{overflow:auto}.restore-preview table{width:100%;border-collapse:collapse}.restore-preview td,.restore-preview th{padding:8px;border-bottom:1px solid var(--line);text-align:left}
+@media(max-width:1200px){
+  #tkTable.tktable{overflow:visible}
+  #tkTable .tk,body.tk-admin #tkTable .tk,body:not(.tk-admin) #tkTable .tk{display:grid;grid-template-columns:minmax(0,1fr) 32px;gap:12px;min-width:0;max-width:100%;padding:16px;margin-bottom:14px;border:1px solid var(--line);border-radius:10px;box-sizing:border-box}
+  #tkTable .tk.h{display:none}
+  #tkTable .tk>*{grid-row:auto!important;grid-column:1/-1!important;min-width:0;max-width:100%;box-sizing:border-box}
+  #tkTable .tk>.ckc:first-child{grid-row:1!important;grid-column:1!important;flex-direction:row;justify-content:flex-start;align-items:center;flex-wrap:wrap;gap:10px}
+  #tkTable .tk>.del{grid-row:1!important;grid-column:2!important;justify-self:end}
+  #tkTable .tk>.tk-cell{display:flex;flex-direction:column;gap:5px}
+  #tkTable .tk-mobile-label{display:block;font-size:12px;color:var(--muted)}
+  #tkTable .tk .in{width:100%;min-width:0;box-sizing:border-box}
+  #tkTable .tk>.whos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+  #tkTable .tk>.whos::before{content:'負責者';grid-column:1/-1;font-size:12px;color:var(--muted)}
+  #tkTable .tk>.resultbox::before{content:'進度回報／歷史成果';display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+  #tkTable .tk>.ckc.rv{border-left:0;padding-left:0;display:flex;flex-direction:column;align-items:stretch}
+  #tkTable .tk>.ckc.rv::before{content:'完成日期與時間';font-size:12px;color:var(--muted)}
+  #tkTable .tk .task-completed-single{max-width:none}
+  #plan #tkFilter{flex-wrap:wrap}
+}
+
+/* Keep restore controls aligned and reveal actions only at their intended step. */
+.restore-backup{margin-top:28px;padding-top:24px;border-top:1px solid var(--line);display:grid;gap:20px;min-width:0}
+.restore-backup [hidden]{display:none!important}
+.restore-backup-head h3{margin:0 0 12px}
+.restore-backup-head p{margin:8px 0 0;line-height:1.8}
+.restore-backup .restore-limits{font-size:13px}
+.restore-backup .restore-step{padding:20px;border:1px solid var(--line);border-radius:10px;background:var(--surface);min-width:0}
+.restore-backup h4{margin:0 0 16px;font-size:15px}
+.restore-backup .restore-file-label{display:block;margin:0 0 10px;font-weight:500}
+.restore-backup input[type=file]{display:block;width:100%;max-width:100%;box-sizing:border-box;min-height:44px;border:1px solid var(--line);border-radius:8px;padding:8px;background:var(--card);color:var(--ink);font:inherit;font-size:14px}
+.restore-backup input[type=file]::file-selector-button{margin-right:12px;border:1px solid var(--line);border-radius:6px;padding:8px 12px;background:var(--surface);color:var(--ink);font:inherit;cursor:pointer}
+.restore-backup input[type=file]:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.restore-backup .restore-actions{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:16px}
+.restore-backup .restore-actions .btn{min-height:42px;margin:0;white-space:normal}
+.restore-backup .restore-final-actions:not(:has(> :not([hidden]))){display:none}
+.restore-backup .restore-step-help{margin:0;line-height:1.8}
+.restore-backup #restoreBackupMsg{margin:16px 0 0;line-height:1.8;overflow-wrap:anywhere}
+.restore-backup #restoreBackupMsg:empty,.restore-backup .restore-preview:empty{display:none}
+.restore-backup .restore-preview{margin-top:20px}
+.restore-backup .restore-preview p{margin:14px 0;line-height:1.8;overflow-wrap:anywhere}
+.restore-backup .restore-preview table{min-width:280px;background:var(--card);font-variant-numeric:tabular-nums}
+.restore-backup .restore-preview td,.restore-backup .restore-preview th{padding:12px 14px}
+.restore-backup .restore-preview td:not(:first-child),.restore-backup .restore-preview th:not(:first-child){text-align:right}
+.restore-backup .restore-notes{padding:18px 20px;border-left:3px solid var(--line);background:var(--surface);border-radius:0 8px 8px 0}
+.restore-backup .restore-notes h4{margin:0 0 10px}
+.restore-backup .restore-notes ul{padding-left:20px;margin:0;line-height:1.8}
+.restore-backup .restore-notes li+li{margin-top:8px}
+@media(max-width:600px){
+ .restore-backup{gap:16px;margin-top:24px;padding-top:20px}
+ .restore-backup .restore-step,.restore-backup .restore-notes{padding:16px}
+ .restore-backup .restore-actions{align-items:stretch;flex-direction:column}
+ .restore-backup .restore-actions .btn{width:100%;box-sizing:border-box}
+ .restore-backup input[type=file]{font-size:13px}
+}

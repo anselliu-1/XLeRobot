@@ -5,8 +5,30 @@ from email.policy import default
 from datetime import datetime
 
 MAX = 50 * 1024 * 1024
+MAX_FILES = 20
 EXT = set(('.py .js .ts .tsx .jsx .c .cpp .h .hpp .ino .java .rs .go .sh .ps1 .yaml .yml .json .xml .html .css .md .txt .csv .log .toml .ipynb .zip .7z .rar .tar .gz .jpg .jpeg .png .gif .webp .mp4 .mov .webm .avi .pdf .doc .docx .xls .xlsx .ppt .pptx').split())
 UPLOADS = threading.BoundedSemaphore(2)
+EXT.update('.m4v .mkv .wmv .mpg .mpeg .3gp .3g2 .ts .mts .m2ts .flv .ogv'.split())
+TEXT_PREVIEW_EXT=set('.txt .csv .json .log .md .py .js .ts .c .cpp .h .css .yaml .yml .ini .xml'.split())
+MEDIA_PREVIEW_EXT=set('.png .jpg .jpeg .gif .webp .pdf .mp4 .m4v .webm .ogv'.split())
+TEXT_PREVIEW_MAX=1024*1024
+
+def upload_policy():
+    return {'allowed_extensions':sorted(EXT),'max_files':MAX_FILES,'max_total_bytes':MAX}
+
+def preview_supported(name,size):
+    ext=os.path.splitext(name)[1].lower()
+    # .ts is ambiguous (TypeScript or transport-stream video), so list it as download-only.
+    return ext in MEDIA_PREVIEW_EXT or ext in TEXT_PREVIEW_EXT and ext!='.ts' and size<=TEXT_PREVIEW_MAX
+
+def attachment_errors(files):
+    errors=[];total=sum(len(data) for name,data in files)
+    if len(files)>MAX_FILES:errors.append(f'附件共 {len(files)} 個，最多 {MAX_FILES} 個，超出 {len(files)-MAX_FILES} 個')
+    if total>MAX:errors.append(f'附件合計 {total/1024/1024:.2f} MB，上限 50 MB，超出 {total-MAX:,} bytes')
+    for name,data in files:
+        ext=os.path.splitext(name)[1].lower()
+        if ext not in EXT:errors.append('不支援的附件格式：'+name+'（'+(ext or '無副檔名')+'）')
+    return errors
 EVENTS = {'新增回報':'progress_add','接續回報':'progress_continue',
           '作廢回報':'progress_void','附件移除':'progress_file_remove','恢復有效':'progress_restore'}
 
@@ -67,6 +89,21 @@ def init():
             c.execute("UPDATE meta SET v=? WHERE k='notify_config'",(json.dumps(cfg),))
             c.execute("INSERT INTO meta(k,v) VALUES('progress_restore_notify_v1','1')")
 
+def notification_time(value):
+    try:return datetime.fromisoformat(value.replace('Z','+00:00')).astimezone(A.TZ).strftime('%Y/%m/%d %H:%M:%S')
+    except (ValueError,TypeError,AttributeError):return value
+
+def notification_detail(detail,show_ids=True):
+    lines=detail.split('\n')
+    match=re.fullmatch(r'(.*?)｜回報 #([0-9]+)(?:[・·]v([0-9]+)|｜第 ([0-9]+) 次回報)',lines[0])
+    if match:
+        action,rid,old_version,version=match.groups()
+        lines[0]=action+'｜'+('回報 #'+rid+'｜' if show_ids else '')+'第 '+(version or old_version)+' 次回報'
+    for index,line in enumerate(lines[:5]):
+        if line.startswith('時間：'):
+            lines[index]='時間：'+notification_time(line[3:]);break
+    return '\n'.join(lines)
+
 def event(c, rid, action, actor, reason='', fid=''):
     now = stamp()
     c.execute('INSERT INTO progress_audit(report_id,action,actor,reason,file_id,created) VALUES(?,?,?,?,?,?)',
@@ -75,7 +112,7 @@ def event(c, rid, action, actor, reason='', fid=''):
     cfg=A.notify_config(c)
     if not cfg.get('enabled') or code not in cfg.get('events',[]): return
     r = c.execute('SELECT * FROM progress_reports WHERE id=?',(rid,)).fetchone()
-    detail = f'{action}｜回報 #{rid}・v{r["version"]}\n{r["subject"]}\n回報人：{r["reporter"]}\n時間：{now}\n'
+    detail = f'{action}｜回報 #{rid}｜第 {r["version"]} 次回報\n{r["subject"]}\n回報人：{r["reporter"]}\n時間：{notification_time(now)}\n'
     detail += ('原因：'+reason if reason else r['content'][:900])
     c.execute('INSERT INTO progress_outbox(id,detail,created,event) VALUES(?,?,?,?)', (uuid.uuid4().hex, detail[:1500], now, code))
 
@@ -101,10 +138,11 @@ def worker():
                     try:
                         with A.LOCK,A.conn() as c:
                             cfg=A.notify_config(c)
+                            show_ids=(c.execute("SELECT v FROM meta WHERE k='progress_notify_show_ids'").fetchone() or {'v':'1'})['v']=='1'
                         if not cfg.get('enabled') or item['event'] not in cfg.get('events',[]): continue
                         domain = os.environ.get('RAILWAY_PUBLIC_DOMAIN','').strip()
                         link = '\nhttps://'+domain+'/#progress' if domain else ''
-                        body = json.dumps({'content': ('XLeRobot｜'+item['detail']+link)[:1900], 'allowed_mentions':{'parse':[]}},ensure_ascii=False).encode()
+                        body = json.dumps({'content': ('XLeRobot｜'+notification_detail(item['detail'],show_ids)+link)[:1900], 'allowed_mentions':{'parse':[]}},ensure_ascii=False).encode()
                         req = urllib.request.Request(webhook, data=body, headers={'Content-Type':'application/json','User-Agent':'XLeRobot-Progress'}, method='POST')
                         with urllib.request.urlopen(req,timeout=15) as response:
                             if response.status not in (200,204): raise RuntimeError('Discord rejected')
@@ -129,8 +167,8 @@ def text_field(value, limit, label, required=False):
 def read_form(h):
     try: n=int(h.headers.get('Content-Length','0'))
     except ValueError: raise ValueError('無效檔案長度')
-    if h.headers.get('Transfer-Encoding') or n<=0 or n>MAX+512*1024:
-        raise ValueError('每筆附件合計上限 50MB')
+    if h.headers.get('Transfer-Encoding') or n<=0:raise ValueError('無效上傳長度')
+    if n>MAX+512*1024:raise ValueError('附件上傳大小超過限制，每筆附件合計上限 50 MB')
     typ=h.headers.get('Content-Type','')
     if not typ.startswith('multipart/form-data;') or len(typ)>300: raise ValueError('請使用表單上傳')
     h.connection.settimeout(30)
@@ -140,7 +178,8 @@ def read_form(h):
     boundary=re.search(r'boundary=(?:"([^"]+)"|([^;\s]+))',typ)
     if not boundary: raise ValueError('無效表單邊界')
     delimiter=(boundary.group(1) or boundary.group(2)).encode('ascii')
-    if not 1<=len(delimiter)<=70 or raw.count(b'\r\n--'+delimiter)>25: raise ValueError('表單欄位或附件過多')
+    if not 1<=len(delimiter)<=70:raise ValueError('無效表單邊界')
+    if raw.count(b'\r\n--'+delimiter)>100:raise ValueError('附件數量過多，每筆最多 20 個附件')
     msg=BytesParser(policy=default).parsebytes(('Content-Type: '+typ+'\r\nMIME-Version: 1.0\r\n\r\n').encode()+raw)
     if not msg.is_multipart() or msg.defects: raise ValueError('無效上傳表單')
     fields={}; files=[]; total=0
@@ -151,16 +190,16 @@ def read_form(h):
         name=part.get_filename()
         if name is not None:
             if not name and not data: continue
-            if key!='files' or len(files)>=20: raise ValueError('最多 20 個附件')
+            if key!='files': raise ValueError('無效附件欄位')
             name=name.replace('\\','/').split('/')[-1]
             if not name or len(name)>180 or any(ord(ch)<32 or ord(ch)==127 for ch in name): raise ValueError('無效檔名')
-            if os.path.splitext(name)[1].lower() not in EXT: raise ValueError('不支援的附件類型：'+name)
             total+=len(data)
-            if total>MAX: raise ValueError('每筆附件合計上限 50MB')
             files.append((name,data))
         else:
             if key not in ('reporter','subject','content','parent_id','task_id') or key in fields or len(data)>45000: raise ValueError('無效表單欄位')
             fields[key]=data.decode('utf-8',errors='strict')
+    errors=attachment_errors(files)
+    if errors:raise ValueError('；'.join(errors))
     return fields,files
 
 def list_reports(h):
@@ -178,15 +217,30 @@ def list_reports(h):
                 current=c.execute('SELECT task FROM tasks WHERE id=?',(r['task_id'],)).fetchone()
                 r['task_display']=current['task'] if current else r['task_name']+'（原工作已移除）'
             else: r['task_display']=''
-            r['files']=[{**dict(f),'url':'/api/progress-files/'+f['id'] if not f['removed_at'] else None} for f in c.execute('SELECT id,name,size,removed_at,reason FROM progress_files WHERE report_id=?',(r['id'],))]
+            r['files']=[{**dict(f),'url':'/api/progress-files/'+f['id'] if not f['removed_at'] else None,'preview_url':'/api/progress-files/'+f['id']+'/preview' if not f['removed_at'] and preview_supported(f['name'],f['size']) else None} for f in c.execute('SELECT id,name,size,removed_at,reason FROM progress_files WHERE report_id=?',(r['id'],))]
         people=sorted({r['reporter'] for r in reports})
         matched=[r['id'] for r in reports if (not who or r['reporter']==who) and (status=='all' or r['status']==status) and (not q or q in '\n'.join([r['reporter'],r['subject'],r['content']]+[f['name'] for f in r['files']]).casefold())]
         # Include full histories for matching topics, even if earlier versions do not match.
         roots={r['root_id'] for r in reports if r['id'] in matched}
         items=[r for r in reports if r['root_id'] in roots]
-        return h._send(200,{'items':items,'matched_ids':matched,'reporters':people,'admin':A.is_admin(h),'show_report_ids':(c.execute("SELECT v FROM meta WHERE k='progress_show_ids'").fetchone() or {'v':'0'})['v']=='1','export_all':(c.execute("SELECT v FROM meta WHERE k='progress_export_all'").fetchone() or {'v':'0'})['v']=='1','audit_all':(c.execute("SELECT v FROM meta WHERE k='progress_audit_all'").fetchone() or {'v':'0'})['v']=='1','trash_count':trash_count})
+        return h._send(200,{'items':items,'matched_ids':matched,'reporters':people,'admin':A.is_admin(h),'admin_show_report_ids':(c.execute("SELECT v FROM meta WHERE k='progress_admin_show_ids'").fetchone() or {'v':'1'})['v']=='1' if A.is_admin(h) else False,'notify_show_report_ids':(c.execute("SELECT v FROM meta WHERE k='progress_notify_show_ids'").fetchone() or {'v':'1'})['v']=='1' if A.is_admin(h) else False,'show_report_ids':(c.execute("SELECT v FROM meta WHERE k='progress_show_ids'").fetchone() or {'v':'0'})['v']=='1','export_all':(c.execute("SELECT v FROM meta WHERE k='progress_export_all'").fetchone() or {'v':'0'})['v']=='1','audit_all':(c.execute("SELECT v FROM meta WHERE k='progress_audit_all'").fetchone() or {'v':'0'})['v']=='1','trash_count':trash_count})
 
-def download(h,fid):
+def preview_kind(name,data):
+    ext=os.path.splitext(name)[1].lower()
+    if ext=='.png' and data.startswith(b'\x89PNG\r\n\x1a\n'):return 'image/png'
+    if ext in ('.jpg','.jpeg') and data.startswith(b'\xff\xd8\xff'):return 'image/jpeg'
+    if ext=='.gif' and data[:6] in (b'GIF87a',b'GIF89a'):return 'image/gif'
+    if ext=='.webp' and data[:4]==b'RIFF' and data[8:12]==b'WEBP':return 'image/webp'
+    if ext=='.pdf' and data.startswith(b'%PDF-'):return 'application/pdf'
+    if ext in ('.mp4','.m4v') and data[4:8]==b'ftyp':return 'video/mp4'
+    if ext=='.webm' and data.startswith(b'\x1a\x45\xdf\xa3'):return 'video/webm'
+    if ext=='.ogv' and data.startswith(b'OggS'):return 'video/ogg'
+    if ext in TEXT_PREVIEW_EXT and len(data)<=TEXT_PREVIEW_MAX and b'\x00' not in data:
+        try:data.decode('utf-8-sig');return 'text/plain; charset=utf-8'
+        except UnicodeDecodeError:pass
+    return None
+
+def download(h,fid,preview=False):
     with A.LOCK, A.conn() as c:
         f=c.execute('SELECT * FROM progress_files WHERE id=?',(fid,)).fetchone()
     if not f or f['removed_at']: return h._send(404,{'error':'附件不存在或已移除'})
@@ -196,13 +250,26 @@ def download(h,fid):
     if f['storage']=='bucket': data,_=A.s3_request('GET',f['object_key'])
     else:
         with open(os.path.join(A.UPLOAD_DIR, f['object_key']), 'rb') as stream: data=stream.read()
-    h.send_response(200)
-    h.send_header('Content-Type','application/octet-stream')
+    kind=preview_kind(f['name'],data) if preview else None
+    if preview and not kind:return h._send(415,{'error':'此附件不支援安全預覽，請下載檢視（純文字預覽上限 1 MB）。'})
+    total=len(data);start=0;end=total-1;status=200
+    if preview and h.headers.get('Range'):
+        match=re.fullmatch(r'bytes=([0-9]*)-([0-9]*)',h.headers['Range'])
+        if not match or not any(match.groups()):return h._send(416,{'error':'無效範圍'})
+        a,b=match.groups()
+        start=int(a) if a else max(0,total-int(b));end=min(int(b),total-1) if a and b else total-1
+        if start>=total or start>end:return h._send(416,{'error':'無效範圍'})
+        status=206
+    h.send_response(status)
+    h.send_header('Content-Type',kind or 'application/octet-stream')
     h.send_header('X-Content-Type-Options','nosniff')
-    h.send_header('Content-Security-Policy',"sandbox; default-src 'none'")
-    h.send_header('Content-Disposition',"attachment; filename=download; filename*=UTF-8''"+urllib.parse.quote(f['name'],safe=''))
+    h.send_header('Content-Security-Policy',"default-src 'none'; script-src 'none'; object-src 'none'; frame-ancestors 'self'; base-uri 'none'" if kind=='application/pdf' else "sandbox; default-src 'none'")
+    h.send_header('Content-Disposition',('inline' if preview else 'attachment')+"; filename=download; filename*=UTF-8''"+urllib.parse.quote(f['name'],safe=''))
+    h.send_header('Cross-Origin-Resource-Policy','same-origin')
+    if preview:h.send_header('Accept-Ranges','bytes')
+    if status==206:h.send_header('Content-Range',f'bytes {start}-{end}/{total}')
     h.send_header('Cache-Control','no-store')
-    h.send_header('Content-Length',str(len(data))); h.end_headers(); h.wfile.write(data)
+    h.send_header('Content-Length',str(end-start+1)); h.end_headers(); h.wfile.write(data[start:end+1])
 
 def create(h):
     if not UPLOADS.acquire(blocking=False): return h._send(429,{'error':'目前上傳忙碌，請稍後再試'})
@@ -404,15 +471,19 @@ def route(h,method):
             if not A.is_admin(h): h._send(403,{'error':'需要管理員'})
             else:
                 d=h._body()
-                if not isinstance(d,dict) or not d or any(k not in ('show_report_ids','export_all','audit_all') or type(v) is not bool for k,v in d.items()):raise ValueError('設定格式錯誤')
+                if not isinstance(d,dict) or not d or any(k not in ('show_report_ids','admin_show_report_ids','notify_show_report_ids','export_all','audit_all') or type(v) is not bool for k,v in d.items()):raise ValueError('設定格式錯誤')
                 with A.LOCK,A.conn() as c:
+                    if 'admin_show_report_ids' in d:c.execute("INSERT OR REPLACE INTO meta(k,v) VALUES('progress_admin_show_ids',?)",('1' if d['admin_show_report_ids'] else '0',))
+                    if 'notify_show_report_ids' in d:c.execute("INSERT OR REPLACE INTO meta(k,v) VALUES('progress_notify_show_ids',?)",('1' if d['notify_show_report_ids'] else '0',))
                     if 'show_report_ids' in d:c.execute("INSERT OR REPLACE INTO meta(k,v) VALUES('progress_show_ids',?)",('1' if d['show_report_ids'] else '0',))
                     if 'export_all' in d:c.execute("INSERT OR REPLACE INTO meta(k,v) VALUES('progress_export_all',?)",('1' if d['export_all'] else '0',))
                     if 'audit_all' in d:c.execute("INSERT OR REPLACE INTO meta(k,v) VALUES('progress_audit_all',?)",('1' if d['audit_all'] else '0',))
                 h._send(200,{'ok':True})
         elif method=='GET' and p=='/api/progress/trash':trash_list(h)
         elif method=='POST' and re.fullmatch(r'/api/progress/[1-9][0-9]*/delete',p):permanently_delete(h,int(p.split('/')[3]))
+        elif method=='GET' and p=='/api/progress/upload-policy':h._send(200,upload_policy())
         elif method=='GET' and p=='/api/progress': list_reports(h)
+        elif method=='GET' and re.fullmatch('/api/progress-files/[a-f0-9]{32}/preview',p): download(h,p.split('/')[3],True)
         elif method=='GET' and re.fullmatch('/api/progress-files/[a-f0-9]{32}',p): download(h,p.rsplit('/',1)[1])
         elif method=='POST' and p=='/api/progress': create(h)
         elif method=='POST' and re.fullmatch(r'/api/progress/[1-9][0-9]*/(void|restore|remove-file|trash|untrash)',p):
@@ -435,5 +506,10 @@ def route(h,method):
         print('progress request failed:',type(exc).__name__,flush=True)
         h.close_connection=True; h._send(503,{'error':'儲存服務暫時無法使用，請重新整理確認後再試'})
     return True
+
+
+
+
+
 
 

@@ -104,12 +104,17 @@ def build(folder):
 
 def route(h,method='POST'):
     path=h._path()
+    if path.startswith('/api/admin/restore'):
+        import restore_backup
+        return restore_backup.route(A,h,method)
     if path not in ('/api/admin/backup','/api/admin/backup/status'): return False
     if not A.is_admin(h): h._send(403,{'error':'需要已驗證的管理員'}); return True
     if path=='/api/admin/backup/status' and method=='GET':
         with A.LOCK,A.conn() as c:
             row=c.execute("SELECT completed FROM admin_backup_audit WHERE status='transferred' AND completed<>'' ORDER BY completed DESC LIMIT 1").fetchone()
-        h._send(200,{'last_backup_at':row['completed'] if row else None});return True
+        safety_root=Path(A.DB).resolve().parent/'restore-safety'
+        copies=sorted((p for p in safety_root.glob('*.zip') if re.fullmatch('[a-f0-9]{32}',p.stem)),key=lambda p:p.stat().st_mtime,reverse=True) if safety_root.is_dir() else []
+        h._send(200,{'last_backup_at':row['completed'] if row else None,'last_restore_safety_id':copies[0].stem if copies else None});return True
     if path!='/api/admin/backup' or method!='POST':
         h._send(405,{'error':'不支援此操作'});return True
     from urllib.parse import urlsplit
@@ -141,4 +146,5 @@ def route(h,method='POST'):
         else: h.close_connection=True
     finally: BUSY.release()
     return True
+
 
