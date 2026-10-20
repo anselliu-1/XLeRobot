@@ -26,3 +26,14 @@
 2. 驗證 Bucket 上傳中斷、刪除失敗、安全副本空間不足及還原交易失敗。
 3. 檢查預覽/下載、一般使用者與管理員權限、備份/還原的端對端流程。
 4. 經使用者明確同意後，才部署整合分支至 Railway 測試站；正式站須另行取得許可。
+
+## 2026-10-20 CI 實測追蹤
+- 初次 GitHub Actions [39451894600](https://github.com/anselliu-1/XLeRobot/actions/runs/39451894600)：Python 成功；Node.js 回歸測試失敗，`test_approved_ui.cjs` 仍預期 ISO `T` 分隔符，但新日期選擇器回傳空白分隔的 24 小時時間。
+- 修正提交 `5f8011e`：更新測試預期為 `2026-10-20 13:00`，不改動既有已確認的日期 UI 行為。
+- 第二次執行 [39452216109](https://github.com/anselliu-1/XLeRobot/actions/runs/39452216109)：日期測試成功，下一個失敗為 `test_review_ui.cjs` 仍預期超額附件會立即被忽略；新版 UI 是保留待送列表、標紅錯誤並禁止送出。
+- 修正提交 `ac8b55a`：更新附件測試，明確驗證 50MB 上限、20 個檔案限制及手動移除後復原。
+- 最新執行 [39452355550](https://github.com/anselliu-1/XLeRobot/actions/runs/39452355550)：**Python tests 成功、Node tests 成功**，包括 Python compileall、unittest discover、JavaScript node --check 及 .cjs 回歸檢查。
+- 以上為隔離環境 CI 成果，尚不代表 Railway 測試站端對端、雲端 Bucket 清理或瀏覽器實測驗收通過。CI 驗證期間**沒有 Railway 部署、沒有合併 main**。
+
+## 待使用者授權的下一步
+可以提出將整合分支部署至 **Railway 測試站** 進行整體驗收的申請。執行前須核對測試站 Volume、Bucket、環境變數以及現有資料備份，確認是否替換當前測試部署。**本紀錄不代表部署許可。**
